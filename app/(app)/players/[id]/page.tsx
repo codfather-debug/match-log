@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils'
+import { DeletePlayerButton } from './DeletePlayerButton'
 
 export default async function PlayerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -38,11 +39,14 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link href="/players" className="text-zinc-400 hover:text-zinc-100">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="text-xl font-semibold">{player.name}</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/players" className="text-zinc-400 hover:text-zinc-100">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h1 className="text-xl font-semibold">{player.name}</h1>
+        </div>
+        <DeletePlayerButton playerId={player.id} matchCount={(matches ?? []).length} />
       </div>
 
       {/* Player info */}

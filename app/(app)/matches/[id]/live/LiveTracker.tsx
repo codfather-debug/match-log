@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import {
   gameWinner,
@@ -62,6 +62,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const [lastUndo, setLastUndo] = useState<Point | null>(null)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
   const [ending, setEnding] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Server picker: shown at start of match, each new set, and tiebreaks
   const needsServerPick = (g: typeof currentGame) =>
@@ -259,6 +261,13 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     router.push(`/matches/${match.id}`)
   }
 
+  async function deleteMatch() {
+    setDeleting(true)
+    await supabase.from('matches').delete().eq('id', match.id)
+    router.push('/matches')
+    router.refresh()
+  }
+
   return (
     <div className="flex min-h-dvh flex-col bg-zinc-950">
       {/* Header */}
@@ -280,10 +289,27 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
                 <StopCircle className="h-3.5 w-3.5" />
                 End
               </button>
+              <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-red-400">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Delete match confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 space-y-4">
+            <h2 className="text-base font-semibold">Delete this match?</h2>
+            <p className="text-sm text-zinc-400">All points and data will be permanently deleted. This can't be undone.</p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</Button>
+              <Button variant="destructive" className="flex-1" onClick={deleteMatch} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* End match confirmation */}
       {showEndConfirm && (
