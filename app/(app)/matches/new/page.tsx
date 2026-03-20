@@ -154,32 +154,35 @@ export default function NewMatchPage() {
 
         {/* Players */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label>Players</Label>
-            <button
-              type="button"
-              onClick={() => setShowAddPlayer((v) => !v)}
-              className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100"
-            >
-              {showAddPlayer ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-              {showAddPlayer ? 'Cancel' : 'Add player'}
-            </button>
-          </div>
+          <Label>Players</Label>
 
-          {/* Inline add player form */}
-          {showAddPlayer && (
-            <form onSubmit={handleAddPlayer} className="flex gap-2 rounded-md border border-zinc-700 bg-zinc-900/50 p-3">
+          {/* Inline add player — div to avoid nested form */}
+          {showAddPlayer ? (
+            <div className="flex gap-2 rounded-md border border-zinc-700 bg-zinc-900/50 p-3">
               <Input
                 placeholder="Player name"
                 value={newPlayerName}
                 onChange={(e) => setNewPlayerName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPlayer(e as unknown as React.FormEvent) } }}
                 className="flex-1"
                 autoFocus
               />
-              <Button type="submit" size="sm" disabled={addingPlayer || !newPlayerName.trim()}>
+              <Button type="button" size="sm" disabled={addingPlayer || !newPlayerName.trim()} onClick={(e) => handleAddPlayer(e as unknown as React.FormEvent)}>
                 {addingPlayer ? '…' : 'Add'}
               </Button>
-            </form>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setShowAddPlayer(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAddPlayer(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-zinc-700 py-2.5 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Add new player
+            </button>
           )}
           {addPlayerError && <p className="text-xs text-red-400">{addPlayerError}</p>}
 

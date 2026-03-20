@@ -321,9 +321,13 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               <span>·</span>
               <span className="text-yellow-400/80">{servingName} serving</span>
               <span>·</span>
-              <span className={serveNumber === 2 ? 'text-orange-400 font-medium' : ''}>
-                {serveNumber === 2 ? '2nd serve' : '1st serve'}
-              </span>
+              {serveNumber === 2 ? (
+                <span className="rounded bg-orange-500/20 px-1.5 py-0.5 font-semibold text-orange-400 border border-orange-500/40">
+                  2nd serve
+                </span>
+              ) : (
+                <span>1st serve</span>
+              )}
             </div>
           </CardContent>
         </Card>
