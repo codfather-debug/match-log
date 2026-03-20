@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { LayoutDashboard, ListChecks, Users, LogOut } from 'lucide-react'
+import { LayoutDashboard, ListChecks, Users, BarChart3, LogOut } from 'lucide-react'
 
 export function BottomNav({ signOut }: { signOut: () => Promise<void> }) {
   const pathname = usePathname()
@@ -13,6 +13,7 @@ export function BottomNav({ signOut }: { signOut: () => Promise<void> }) {
   const links = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Home' },
     { href: '/matches', icon: ListChecks, label: 'Matches' },
+    { href: '/stats', icon: BarChart3, label: 'Stats' },
     { href: '/players', icon: Users, label: 'Players' },
   ]
 

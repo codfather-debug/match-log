@@ -3,15 +3,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Radio, Trash2, Sparkles } from 'lucide-react'
+import { ArrowLeft, Radio, Trash2, Sparkles, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { computeStats } from '@/lib/stats'
 import type { Point } from '@/types/tennis'
 
-type GameRow = { id: string; server: string; is_tiebreak: boolean; points: Point[] }
+type GameRow = { id: string; server: string; game_number: number; is_tiebreak: boolean; points: Point[] }
 type SetRow = {
   id: string; set_number: number; team1_games: number; team2_games: number
   winner: string | null; is_tiebreak: boolean; is_super_tiebreak: boolean
@@ -25,96 +26,6 @@ type Props = {
 }
 
 type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns'
-
-function count<T>(arr: T[], pred: (x: T) => boolean) { return arr.filter(pred).length }
-function byKey<T>(arr: T[], key: (x: T) => string | null | undefined) {
-  const map: Record<string, number> = {}
-  for (const item of arr) { const k = key(item); if (k) map[k] = (map[k] ?? 0) + 1 }
-  return map
-}
-
-function computeStats(points: Point[]) {
-  const p1 = points.filter(p => p.server === 'player1')
-  const p2 = points.filter(p => p.server === 'player2')
-  const fs1In = count(p1, p => p.serve_number === 1)
-  const fs2In = count(p2, p => p.serve_number === 1)
-  const ss1Total = count(p1, p => p.serve_number === 2)
-  const ss2Total = count(p2, p => p.serve_number === 2)
-
-  const aces1pts = points.filter(p => p.outcome === 'ace' && p.server === 'player1')
-  const aces2pts = points.filter(p => p.outcome === 'ace' && p.server === 'player2')
-  const df1pts = points.filter(p => p.outcome === 'double_fault' && p.server === 'player1')
-  const df2pts = points.filter(p => p.outcome === 'double_fault' && p.server === 'player2')
-  const w1pts = points.filter(p => p.outcome === 'winner' && p.point_winner === 'team1')
-  const w2pts = points.filter(p => p.outcome === 'winner' && p.point_winner === 'team2')
-  const ue1pts = points.filter(p => p.outcome === 'unforced_error' && p.point_winner === 'team2')
-  const ue2pts = points.filter(p => p.outcome === 'unforced_error' && p.point_winner === 'team1')
-
-  return {
-    team1Points: count(points, p => p.point_winner === 'team1'),
-    team2Points: count(points, p => p.point_winner === 'team2'),
-    aces1: aces1pts.length, aces2: aces2pts.length,
-    df1: df1pts.length, df2: df2pts.length,
-    winners1: w1pts.length, winners2: w2pts.length,
-    ue1: ue1pts.length, ue2: ue2pts.length,
-    fs1In, fs2In, ss1Total, ss2Total,
-    fs1pct: p1.length ? Math.round((fs1In / p1.length) * 100) : 0,
-    fs2pct: p2.length ? Math.round((fs2In / p2.length) * 100) : 0,
-    fsWon1: count(p1, p => p.serve_number === 1 && p.point_winner === 'team1'),
-    ssWon1: count(p1, p => p.serve_number === 2 && p.point_winner === 'team1'),
-    fsWon2: count(p2, p => p.serve_number === 1 && p.point_winner === 'team2'),
-    ssWon2: count(p2, p => p.serve_number === 2 && p.point_winner === 'team2'),
-    fsRetWon1: count(p2, p => p.serve_number === 1 && p.point_winner === 'team1'),
-    ssRetWon1: count(p2, p => p.serve_number === 2 && p.point_winner === 'team1'),
-    fsRetWon2: count(p1, p => p.serve_number === 1 && p.point_winner === 'team2'),
-    ssRetWon2: count(p1, p => p.serve_number === 2 && p.point_winner === 'team2'),
-    avgRally: points.length
-      ? (points.reduce((s, p) => s + (p.rally_length ?? 0), 0) / points.length).toFixed(1) : '—',
-    // Deep analysis
-    aceLoc1: byKey(aces1pts, p => p.serve_placement),
-    aceLoc2: byKey(aces2pts, p => p.serve_placement),
-    aceServe1: byKey(aces1pts, p => String(p.serve_number)),
-    aceServe2: byKey(aces2pts, p => String(p.serve_number)),
-    dfLoc1: byKey(df1pts, p => p.serve_placement),
-    dfLoc2: byKey(df2pts, p => p.serve_placement),
-    winnerStrokes1: byKey(w1pts, p => p.last_shot_type),
-    winnerStrokes2: byKey(w2pts, p => p.last_shot_type),
-    ueStrokes1: byKey(ue1pts, p => p.last_shot_type),
-    ueStrokes2: byKey(ue2pts, p => p.last_shot_type),
-    ueDirs1: byKey(ue1pts, p => p.error_direction),
-    ueDirs2: byKey(ue2pts, p => p.error_direction),
-    svcLoc1by1: byKey(p1.filter(p => p.serve_number === 1), p => p.serve_placement),
-    svcLoc1by2: byKey(p1.filter(p => p.serve_number === 2), p => p.serve_placement),
-    svcLoc2by1: byKey(p2.filter(p => p.serve_number === 1), p => p.serve_placement),
-    svcLoc2by2: byKey(p2.filter(p => p.serve_number === 2), p => p.serve_placement),
-    p1Total: p1.length, p2Total: p2.length,
-    // Returns: team1 receives when player2/player4 serves; team2 receives when player1/player3 serves
-    ...(() => {
-      const isUnsuccessfulReturn = (p: Point) =>
-        p.outcome === 'ace' ||
-        ((p.outcome === 'unforced_error' || p.outcome === 'error') && p.last_shot_type === 'return')
-      const ret1pts = points.filter(p => p.server === 'player2' || p.server === 'player4')
-      const ret2pts = points.filter(p => p.server === 'player1' || p.server === 'player3')
-      const ret1by1 = ret1pts.filter(p => p.serve_number === 1)
-      const ret1by2 = ret1pts.filter(p => p.serve_number === 2)
-      const ret2by1 = ret2pts.filter(p => p.serve_number === 1)
-      const ret2by2 = ret2pts.filter(p => p.serve_number === 2)
-      return {
-        retTotal1: ret1pts.length, retTotal2: ret2pts.length,
-        retSucc1: count(ret1pts, p => !isUnsuccessfulReturn(p)),
-        retSucc2: count(ret2pts, p => !isUnsuccessfulReturn(p)),
-        retSucc1by1: count(ret1by1, p => !isUnsuccessfulReturn(p)), retTotal1by1: ret1by1.length,
-        retSucc1by2: count(ret1by2, p => !isUnsuccessfulReturn(p)), retTotal1by2: ret1by2.length,
-        retSucc2by1: count(ret2by1, p => !isUnsuccessfulReturn(p)), retTotal2by1: ret2by1.length,
-        retSucc2by2: count(ret2by2, p => !isUnsuccessfulReturn(p)), retTotal2by2: ret2by2.length,
-        retLocTotal1: byKey(ret1pts, p => p.serve_placement),
-        retLocSucc1: byKey(ret1pts.filter(p => !isUnsuccessfulReturn(p)), p => p.serve_placement),
-        retLocTotal2: byKey(ret2pts, p => p.serve_placement),
-        retLocSucc2: byKey(ret2pts.filter(p => !isUnsuccessfulReturn(p)), p => p.serve_placement),
-      }
-    })(),
-  }
-}
 
 export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets }: Props) {
   const isDoubles = matchType === 'doubles'
@@ -151,6 +62,29 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
     } catch (e) { setAiSummary('Unable to generate summary: ' + (e instanceof Error ? e.message : String(e))) }
     setLoadingAI(false)
   }, [p1, p2, JSON.stringify(s)])
+
+  function exportMatch() {
+    const gameMap: Record<string, { setNum: number; gameNum: number }> = {}
+    sets.forEach(s => s.games.forEach(g => { gameMap[g.id] = { setNum: s.set_number, gameNum: g.game_number } }))
+    const slotName = (slot: string) => slot === 'player1' ? p1 : slot === 'player2' ? p2 : slot === 'player3' ? (p3 ?? 'Opp 1') : (p4 ?? 'Opp 2')
+    const headers = ['#', 'Set', 'Game', 'Server', 'Serve', 'Placement', 'Outcome', 'Shot', 'Error Direction', 'Rally', 'Point Won By']
+    const rows = allPoints.map((pt, i) => {
+      const gm = gameMap[pt.game_id] ?? { setNum: '', gameNum: '' }
+      return [i + 1, gm.setNum, gm.gameNum, slotName(pt.server), pt.serve_number, pt.serve_placement ?? '', pt.outcome ?? '', pt.last_shot_type ?? '', pt.error_direction ?? '', pt.rally_length, pt.point_winner === 'team1' ? p1 : pt.point_winner === 'team2' ? p2 : '']
+    })
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const matchLabel = `${p1}_vs_${p2}_${formatDate(createdAt)}`.replace(/\s+/g, '_')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const file = new File([blob], `${matchLabel}.csv`, { type: 'text/csv' })
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
+      navigator.share({ title: `${p1} vs ${p2} — Match Data`, files: [file] }).catch(() => {})
+    } else {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `${matchLabel}.csv`; a.click()
+      URL.revokeObjectURL(url)
+    }
+  }
 
   async function handleDelete() {
     setDeleting(true)
@@ -204,6 +138,9 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
               <Link href={`/matches/${id}/live`}><Radio className="h-4 w-4" />Live</Link>
             </Button>
           )}
+          <button onClick={exportMatch} disabled={allPoints.length === 0} className="flex items-center justify-center rounded-md p-2 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors disabled:opacity-30">
+            <Download className="h-4 w-4" />
+          </button>
           <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center justify-center rounded-md p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors">
             <Trash2 className="h-4 w-4" />
           </button>
