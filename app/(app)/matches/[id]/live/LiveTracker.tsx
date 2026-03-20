@@ -431,7 +431,7 @@ function StepContent({
   if (step === 'serve_result') {
     return (
       <StepCard title={`${isSecond ? '2nd' : '1st'} serve result`}>
-        <Grid2>
+        <div className="flex flex-col gap-2">
           <ChoiceBtn
             label="Ace ★"
             accent="green"
@@ -440,6 +440,7 @@ function StepContent({
               onSave(d)
             }}
           />
+          <ChoiceBtn label="In play →" onClick={() => onGo('outcome', { serve_result: 'in_play' })} />
           <ChoiceBtn
             label={isSecond ? 'Double fault' : 'Fault'}
             accent="red"
@@ -453,8 +454,7 @@ function StepContent({
               }
             }}
           />
-          <ChoiceBtn label="In play →" onClick={() => onGo('outcome', { serve_result: 'in_play' })} className="col-span-2" />
-        </Grid2>
+        </div>
       </StepCard>
     )
   }
