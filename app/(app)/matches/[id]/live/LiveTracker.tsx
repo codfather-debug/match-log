@@ -107,9 +107,13 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function back() {
-    const stepOrder: Step[] = ['serve_placement', 'serve_result', 'shot_type', 'error_direction', 'point_winner', 'confirm']
-    const idx = stepOrder.indexOf(step)
-    if (idx > 0) setStep(stepOrder[idx - 1])
+    if (step === 'shot_type') return setStep('point_winner')
+    if (step === 'point_winner') {
+      const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+      return setStep(isError ? 'error_direction' : 'serve_result')
+    }
+    if (step === 'error_direction') return setStep('serve_result')
+    if (step === 'serve_result') return setStep('serve_placement')
   }
 
   async function savePoint(finalDraft: PointDraft) {
@@ -441,9 +445,9 @@ function StepContent({
               onSave(d)
             }}
           />
-          <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('shot_type', { serve_result: 'in_play' as ServeResult, outcome: 'winner' as PointOutcome })} />
-          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('shot_type', { serve_result: 'in_play' as ServeResult, outcome: 'unforced_error' as PointOutcome })} />
-          <ChoiceBtn label="Forced Error" onClick={() => onGo('shot_type', { serve_result: 'in_play' as ServeResult, outcome: 'error' as PointOutcome })} />
+          <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'winner' as PointOutcome })} />
+          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('error_direction', { serve_result: 'in_play' as ServeResult, outcome: 'unforced_error' as PointOutcome })} />
+          <ChoiceBtn label="Forced Error" onClick={() => onGo('error_direction', { serve_result: 'in_play' as ServeResult, outcome: 'error' as PointOutcome })} />
           <ChoiceBtn
             label={faultLabel}
             accent="red"
@@ -463,19 +467,18 @@ function StepContent({
   }
 
   if (step === 'shot_type') {
-    const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
-    const next = isError ? 'error_direction' : 'point_winner'
+    const save = (t: ShotType) => onSave({ ...draft, last_shot_type: t })
     return (
       <StepCard title="Last shot">
         <div className="flex flex-col gap-2">
-          <ChoiceBtn label="Forehand" onClick={() => onGo(next, { last_shot_type: 'forehand' })} />
-          <ChoiceBtn label="Backhand" onClick={() => onGo(next, { last_shot_type: 'backhand' })} />
-          <ChoiceBtn label="Return" onClick={() => onGo(next, { last_shot_type: 'return' })} />
-          <ChoiceBtn label="FH Volley" onClick={() => onGo(next, { last_shot_type: 'forehand_volley' })} />
-          <ChoiceBtn label="BH Volley" onClick={() => onGo(next, { last_shot_type: 'backhand_volley' })} />
-          <ChoiceBtn label="Overhead" onClick={() => onGo(next, { last_shot_type: 'overhead' })} />
-          <ChoiceBtn label="Lob" onClick={() => onGo(next, { last_shot_type: 'lob' })} />
-          <ChoiceBtn label="Drop Shot" onClick={() => onGo(next, { last_shot_type: 'drop_shot' })} />
+          <ChoiceBtn label="Forehand" onClick={() => save('forehand')} />
+          <ChoiceBtn label="Backhand" onClick={() => save('backhand')} />
+          <ChoiceBtn label="Return" onClick={() => save('return')} />
+          <ChoiceBtn label="FH Volley" onClick={() => save('forehand_volley')} />
+          <ChoiceBtn label="BH Volley" onClick={() => save('backhand_volley')} />
+          <ChoiceBtn label="Overhead" onClick={() => save('overhead')} />
+          <ChoiceBtn label="Lob" onClick={() => save('lob')} />
+          <ChoiceBtn label="Drop Shot" onClick={() => save('drop_shot')} />
         </div>
       </StepCard>
     )
@@ -518,7 +521,7 @@ function StepContent({
               accent="green"
               onClick={() => {
                 const pointWinner: Team = draft.outcome === 'winner' ? 'team1' : 'team2'
-                onSave({ ...draft, point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot })
+                onGo('shot_type', { point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot })
               }}
             />
             <ChoiceBtn
@@ -526,7 +529,7 @@ function StepContent({
               accent="green"
               onClick={() => {
                 const pointWinner: Team = draft.outcome === 'winner' ? 'team2' : 'team1'
-                onSave({ ...draft, point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot })
+                onGo('shot_type', { point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot })
               }}
             />
           </Grid2>
@@ -569,63 +572,139 @@ function ServeCourtDiagram({
   courtSide: 'deuce' | 'ad'
   onSelect: (p: ServePlacement) => void
 }) {
-  // Zone order left→right from server's perspective
-  // Deuce side: T (left/center), Body (mid), Wide (right/sideline)
-  // Deuce: Wide (left/sideline) | Body | T (right/center)
-  // Ad:    T (left/center) | Body | Wide (right/sideline)
+  const [pressed, setPressed] = useState<string | null>(null)
+
+  // Deuce: serve lands in LEFT service box → Wide | Body | T (left→right)
+  // Ad:    serve lands in RIGHT service box → T | Body | Wide (left→right)
   const zones: { label: string; sub: string; value: ServePlacement }[] =
     courtSide === 'deuce'
       ? [
-          { label: 'Wide', sub: 'Sideline', value: 'wide' },
-          { label: 'Body', sub: 'Middle', value: 'body' },
-          { label: 'T', sub: 'Center', value: 'T' },
+          { label: 'Wide', sub: 'sideline', value: 'wide' },
+          { label: 'Body', sub: 'middle', value: 'body' },
+          { label: 'T', sub: 'center', value: 'T' },
         ]
       : [
-          { label: 'T', sub: 'Center', value: 'T' },
-          { label: 'Body', sub: 'Middle', value: 'body' },
-          { label: 'Wide', sub: 'Sideline', value: 'wide' },
+          { label: 'T', sub: 'center', value: 'T' },
+          { label: 'Body', sub: 'middle', value: 'body' },
+          { label: 'Wide', sub: 'sideline', value: 'wide' },
         ]
 
+  // Court SVG layout — top-down view of opponent's half (net at bottom)
+  const W = 320, H = 200
+  const dblL = 22, dblR = 298          // doubles sidelines
+  const sglL = 55, sglR = 265          // singles sidelines (75% of doubles)
+  const topY = 10                       // opponent baseline
+  const netY = 186                      // net
+  const courtH = netY - topY            // 176px total half-court height
+  // service line is 21ft from net, baseline is 39ft from net → 21/39 = 53.8% up from net
+  const svcY = Math.round(netY - courtH * (21 / 39))  // ≈ 91
+  const midX = (sglL + sglR) / 2       // 160 — center service line
+  const halfW = (sglR - sglL) / 2      // 105px per service box
+  const zoneW = halfW / 3               // 35px per zone
+
+  const deuce = courtSide === 'deuce'
+  const boxX = deuce ? sglL : midX     // left edge of active service box
+  const inactX = deuce ? midX : sglL   // left edge of inactive service box
+  const zoneMidY = (svcY + netY) / 2   // vertical center of service box
+
   return (
-    <div className="space-y-1.5">
-      {/* Net bar */}
-      <div className="flex items-center gap-1.5">
-        <div className="h-px flex-1 bg-zinc-600" />
-        <span className="text-xs text-zinc-500">NET</span>
-        <div className="h-px flex-1 bg-zinc-600" />
-      </div>
+    <div className="overflow-hidden rounded-xl border border-white/10">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ display: 'block' }}>
+        {/* Outside-court surface */}
+        <rect width={W} height={H} fill="#4aaa46" />
+        {/* In-bounds court surface */}
+        <rect x={dblL} y={topY} width={dblR - dblL} height={netY - topY} fill="#5cb85c" />
 
-      {/* Service box */}
-      <div className="relative overflow-hidden rounded-lg border border-zinc-700 bg-emerald-950/60">
-        {/* Court lines */}
-        <div className="absolute inset-0 flex">
-          <div className="flex-1 border-r border-white/20" />
-          <div className="flex-1 border-r border-white/20" />
-          <div className="flex-1" />
-        </div>
+        {/* Inactive service box overlay */}
+        <rect x={inactX} y={svcY} width={halfW} height={netY - svcY} fill="rgba(0,0,0,0.22)" />
 
-        {/* Tap zones */}
-        <div className="relative grid grid-cols-3">
-          {zones.map((z) => (
-            <button
-              key={z.value}
-              type="button"
-              onClick={() => onSelect(z.value)}
-              className="group flex flex-col items-center justify-center py-8 transition-colors hover:bg-white/10 active:bg-white/20"
-            >
-              <span className="text-base font-bold text-white">{z.label}</span>
-              <span className="text-xs text-emerald-300/60">{z.sub}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+        {/* Active zone tap targets */}
+        {zones.map((zone, i) => (
+          <rect
+            key={zone.value}
+            x={boxX + i * zoneW} y={svcY}
+            width={zoneW} height={netY - svcY}
+            fill={pressed === zone.value ? 'rgba(255,255,255,0.28)' : 'transparent'}
+            style={{ cursor: 'pointer' }}
+            onPointerDown={() => setPressed(zone.value)}
+            onPointerUp={() => { setPressed(null); onSelect(zone.value) }}
+            onPointerLeave={() => setPressed(null)}
+          />
+        ))}
 
-      {/* Server label */}
-      <div className="flex items-center gap-1.5">
-        <div className="h-px flex-1 bg-zinc-800" />
-        <span className="text-xs text-zinc-600">SERVER</span>
-        <div className="h-px flex-1 bg-zinc-800" />
-      </div>
+        {/* ── Court lines ── */}
+        {/* Doubles outer rectangle */}
+        <rect x={dblL} y={topY} width={dblR - dblL} height={netY - topY}
+          fill="none" stroke="white" strokeWidth="1.5" />
+        {/* Singles sidelines */}
+        <line x1={sglL} y1={topY} x2={sglL} y2={netY} stroke="white" strokeWidth="1.5" />
+        <line x1={sglR} y1={topY} x2={sglR} y2={netY} stroke="white" strokeWidth="1.5" />
+        {/* Service line */}
+        <line x1={sglL} y1={svcY} x2={sglR} y2={svcY} stroke="white" strokeWidth="1.5" />
+        {/* Center service line */}
+        <line x1={midX} y1={svcY} x2={midX} y2={netY} stroke="white" strokeWidth="1.5" />
+        {/* Baseline center mark */}
+        <line x1={midX} y1={topY} x2={midX} y2={topY + 8} stroke="white" strokeWidth="1.5" />
+
+        {/* Zone dividers (dashed, active box only) */}
+        {[1, 2].map(i => (
+          <line key={i}
+            x1={boxX + i * zoneW} y1={svcY}
+            x2={boxX + i * zoneW} y2={netY}
+            stroke="rgba(255,255,255,0.55)" strokeWidth="1" strokeDasharray="4,3"
+          />
+        ))}
+
+        {/* Net */}
+        <line x1={dblL - 4} y1={netY} x2={dblR + 4} y2={netY} stroke="white" strokeWidth="2.5" />
+        {/* Net posts */}
+        <circle cx={dblL - 4} cy={netY} r="3" fill="white" />
+        <circle cx={dblR + 4} cy={netY} r="3" fill="white" />
+        {/* Net strap (center) */}
+        <line x1={midX} y1={netY - 4} x2={midX} y2={netY + 4} stroke="white" strokeWidth="1.5" />
+
+        {/* Zone labels */}
+        {zones.map((zone, i) => (
+          <g key={zone.value} style={{ pointerEvents: 'none' }}>
+            <text x={boxX + i * zoneW + zoneW / 2} y={zoneMidY - 5}
+              textAnchor="middle" fill="white" fontSize="13" fontWeight="bold"
+              fontFamily="system-ui, -apple-system, sans-serif">
+              {zone.label}
+            </text>
+            <text x={boxX + i * zoneW + zoneW / 2} y={zoneMidY + 9}
+              textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="8"
+              fontFamily="system-ui, -apple-system, sans-serif">
+              {zone.sub}
+            </text>
+          </g>
+        ))}
+
+        {/* Inactive box label */}
+        <text
+          x={deuce ? sglR - 4 : sglL + 4} y={zoneMidY}
+          textAnchor={deuce ? 'end' : 'start'}
+          fill="rgba(255,255,255,0.3)" fontSize="8"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          style={{ pointerEvents: 'none' }}>
+          {deuce ? 'AD' : 'DEUCE'}
+        </text>
+
+        {/* NET label */}
+        <text x={midX} y={netY - 5} textAnchor="middle"
+          fill="rgba(255,255,255,0.45)" fontSize="7" letterSpacing="2"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          style={{ pointerEvents: 'none' }}>
+          NET
+        </text>
+
+        {/* SERVER label below net line */}
+        <text x={midX} y={netY + 12} textAnchor="middle"
+          fill="rgba(255,255,255,0.25)" fontSize="7" letterSpacing="2"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          style={{ pointerEvents: 'none' }}>
+          SERVER
+        </text>
+      </svg>
     </div>
   )
 }
