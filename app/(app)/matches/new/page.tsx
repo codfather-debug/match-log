@@ -115,7 +115,7 @@ export default function NewMatchPage() {
         status: 'in_progress',
         format: { sets: Number(sets), tiebreak, superTiebreak, noAd },
         player1_id: player1,
-        player2_id: player2,
+        player2_id: matchType === 'practice' ? null : player2,
         player3_id: matchType === 'doubles' ? player3 : null,
         player4_id: matchType === 'doubles' ? player4 : null,
         started_at: new Date().toISOString(),
