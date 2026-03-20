@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2, Share2 } from 'lucide-react'
 import Link from 'next/link'
 import {
   gameWinner,
@@ -279,6 +279,19 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             </Link>
             <span className="text-xs font-medium text-zinc-400">Match Log</span>
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/matches/${match.id}/spectate`
+                  if (navigator.share) {
+                    navigator.share({ title: 'Live score', url })
+                  } else {
+                    navigator.clipboard.writeText(url).then(() => alert('Link copied!'))
+                  }
+                }}
+                className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </button>
               {lastUndo && (
                 <button onClick={undoLastPoint} className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100">
                   <RotateCcw className="h-3.5 w-3.5" />
