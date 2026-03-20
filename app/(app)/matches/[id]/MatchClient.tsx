@@ -19,16 +19,21 @@ type SetRow = {
   games: GameRow[]
 }
 
+type WeatherSnapshot = {
+  temp: number; feels_like: number; wind_mph: number; gust_mph: number
+  precip_in: number; condition: string
+} | null
+
 type Props = {
   id: string; p1: string; p2: string; p3?: string; p4?: string
   status: string; winner: string | null
   matchType: string; createdAt: string; sets: SetRow[]
-  notes?: string | null
+  notes?: string | null; weather?: WeatherSnapshot
 }
 
 type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns'
 
-export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets, notes }: Props) {
+export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets, notes, weather }: Props) {
   const isDoubles = matchType === 'doubles'
   const router = useRouter()
   const [activeSet, setActiveSet] = useState<'all' | number>('all')
@@ -163,6 +168,17 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
           : status === 'completed' ? <Badge variant="success">Completed</Badge>
           : <Badge variant="outline">Pending</Badge>}
       </div>
+
+      {weather && (
+        <div className="flex items-center gap-3 text-xs text-zinc-500 -mt-3">
+          <span>{weather.condition}</span>
+          <span>·</span>
+          <span>{weather.temp}°F (feels {weather.feels_like}°F)</span>
+          <span>·</span>
+          <span>Wind {weather.wind_mph} mph{weather.gust_mph > weather.wind_mph + 3 ? `, gusts ${weather.gust_mph}` : ''}</span>
+          {weather.precip_in > 0 && <><span>·</span><span>{weather.precip_in}″ precip</span></>}
+        </div>
+      )}
 
       {/* Match score */}
       <Card className="border-zinc-800">

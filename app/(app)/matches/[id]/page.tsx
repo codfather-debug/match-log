@@ -34,6 +34,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       createdAt={match.created_at}
       sets={match.sets ?? []}
       notes={match.notes}
+      weather={(match as unknown as { weather?: { temp: number; feels_like: number; wind_mph: number; gust_mph: number; precip_in: number; condition: string } }).weather ?? null}
     />
   )
 }
