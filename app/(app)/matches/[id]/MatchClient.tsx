@@ -1,14 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Radio, Trash2 } from 'lucide-react'
+import { ArrowLeft, Radio, Trash2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 import type { Point } from '@/types/tennis'
 
 type GameRow = { id: string; server: string; is_tiebreak: boolean; points: Point[] }
@@ -19,71 +19,85 @@ type SetRow = {
 }
 
 type Props = {
-  id: string
-  p1: string
-  p2: string
-  status: string
-  winner: string | null
-  matchType: string
-  createdAt: string
-  sets: SetRow[]
+  id: string; p1: string; p2: string; status: string; winner: string | null
+  matchType: string; createdAt: string; sets: SetRow[]
+}
+
+type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue'
+
+function count<T>(arr: T[], pred: (x: T) => boolean) { return arr.filter(pred).length }
+function byKey<T>(arr: T[], key: (x: T) => string | null | undefined) {
+  const map: Record<string, number> = {}
+  for (const item of arr) { const k = key(item); if (k) map[k] = (map[k] ?? 0) + 1 }
+  return map
 }
 
 function computeStats(points: Point[]) {
-  const p1Pts = points.filter(p => p.server === 'player1')
-  const p2Pts = points.filter(p => p.server === 'player2')
-  const fs1In = p1Pts.filter(p => p.serve_number === 1).length
-  const fs2In = p2Pts.filter(p => p.serve_number === 1).length
-  const ss1Total = p1Pts.filter(p => p.serve_number === 2).length
-  const ss2Total = p2Pts.filter(p => p.serve_number === 2).length
+  const p1 = points.filter(p => p.server === 'player1')
+  const p2 = points.filter(p => p.server === 'player2')
+  const fs1In = count(p1, p => p.serve_number === 1)
+  const fs2In = count(p2, p => p.serve_number === 1)
+  const ss1Total = count(p1, p => p.serve_number === 2)
+  const ss2Total = count(p2, p => p.serve_number === 2)
+
+  const aces1pts = points.filter(p => p.outcome === 'ace' && p.server === 'player1')
+  const aces2pts = points.filter(p => p.outcome === 'ace' && p.server === 'player2')
+  const df1pts = points.filter(p => p.outcome === 'double_fault' && p.server === 'player1')
+  const df2pts = points.filter(p => p.outcome === 'double_fault' && p.server === 'player2')
+  const w1pts = points.filter(p => p.outcome === 'winner' && p.point_winner === 'team1')
+  const w2pts = points.filter(p => p.outcome === 'winner' && p.point_winner === 'team2')
+  const ue1pts = points.filter(p => p.outcome === 'unforced_error' && p.point_winner === 'team2')
+  const ue2pts = points.filter(p => p.outcome === 'unforced_error' && p.point_winner === 'team1')
 
   return {
-    team1Points: points.filter(p => p.point_winner === 'team1').length,
-    team2Points: points.filter(p => p.point_winner === 'team2').length,
-    aces1: points.filter(p => p.outcome === 'ace' && p.server === 'player1').length,
-    aces2: points.filter(p => p.outcome === 'ace' && p.server === 'player2').length,
-    winners1: points.filter(p => p.outcome === 'winner' && p.point_winner === 'team1').length,
-    winners2: points.filter(p => p.outcome === 'winner' && p.point_winner === 'team2').length,
-    ue1: points.filter(p => p.outcome === 'unforced_error' && p.point_winner === 'team2').length,
-    ue2: points.filter(p => p.outcome === 'unforced_error' && p.point_winner === 'team1').length,
-    df1: points.filter(p => p.outcome === 'double_fault' && p.server === 'player1').length,
-    df2: points.filter(p => p.outcome === 'double_fault' && p.server === 'player2').length,
-    fs1In, fs2In,
-    fs1pct: p1Pts.length ? Math.round((fs1In / p1Pts.length) * 100) : 0,
-    fs2pct: p2Pts.length ? Math.round((fs2In / p2Pts.length) * 100) : 0,
-    fsWon1: p1Pts.filter(p => p.serve_number === 1 && p.point_winner === 'team1').length,
-    ssWon1: p1Pts.filter(p => p.serve_number === 2 && p.point_winner === 'team1').length,
-    fsWon2: p2Pts.filter(p => p.serve_number === 1 && p.point_winner === 'team2').length,
-    ssWon2: p2Pts.filter(p => p.serve_number === 2 && p.point_winner === 'team2').length,
-    ss1Total, ss2Total,
-    fsRetWon1: p2Pts.filter(p => p.serve_number === 1 && p.point_winner === 'team1').length,
-    ssRetWon1: p2Pts.filter(p => p.serve_number === 2 && p.point_winner === 'team1').length,
-    fsRetWon2: p1Pts.filter(p => p.serve_number === 1 && p.point_winner === 'team2').length,
-    ssRetWon2: p1Pts.filter(p => p.serve_number === 2 && p.point_winner === 'team2').length,
+    team1Points: count(points, p => p.point_winner === 'team1'),
+    team2Points: count(points, p => p.point_winner === 'team2'),
+    aces1: aces1pts.length, aces2: aces2pts.length,
+    df1: df1pts.length, df2: df2pts.length,
+    winners1: w1pts.length, winners2: w2pts.length,
+    ue1: ue1pts.length, ue2: ue2pts.length,
+    fs1In, fs2In, ss1Total, ss2Total,
+    fs1pct: p1.length ? Math.round((fs1In / p1.length) * 100) : 0,
+    fs2pct: p2.length ? Math.round((fs2In / p2.length) * 100) : 0,
+    fsWon1: count(p1, p => p.serve_number === 1 && p.point_winner === 'team1'),
+    ssWon1: count(p1, p => p.serve_number === 2 && p.point_winner === 'team1'),
+    fsWon2: count(p2, p => p.serve_number === 1 && p.point_winner === 'team2'),
+    ssWon2: count(p2, p => p.serve_number === 2 && p.point_winner === 'team2'),
+    fsRetWon1: count(p2, p => p.serve_number === 1 && p.point_winner === 'team1'),
+    ssRetWon1: count(p2, p => p.serve_number === 2 && p.point_winner === 'team1'),
+    fsRetWon2: count(p1, p => p.serve_number === 1 && p.point_winner === 'team2'),
+    ssRetWon2: count(p1, p => p.serve_number === 2 && p.point_winner === 'team2'),
     avgRally: points.length
-      ? (points.reduce((s, p) => s + (p.rally_length ?? 0), 0) / points.length).toFixed(1)
-      : '—',
+      ? (points.reduce((s, p) => s + (p.rally_length ?? 0), 0) / points.length).toFixed(1) : '—',
+    // Deep analysis
+    aceLoc1: byKey(aces1pts, p => p.serve_placement),
+    aceLoc2: byKey(aces2pts, p => p.serve_placement),
+    aceServe1: byKey(aces1pts, p => String(p.serve_number)),
+    aceServe2: byKey(aces2pts, p => String(p.serve_number)),
+    dfLoc1: byKey(df1pts, p => p.serve_placement),
+    dfLoc2: byKey(df2pts, p => p.serve_placement),
+    winnerStrokes1: byKey(w1pts, p => p.last_shot_type),
+    winnerStrokes2: byKey(w2pts, p => p.last_shot_type),
+    ueStrokes1: byKey(ue1pts, p => p.last_shot_type),
+    ueStrokes2: byKey(ue2pts, p => p.last_shot_type),
+    ueDirs1: byKey(ue1pts, p => p.error_direction),
+    ueDirs2: byKey(ue2pts, p => p.error_direction),
+    svcLoc1by1: byKey(p1.filter(p => p.serve_number === 1), p => p.serve_placement),
+    svcLoc1by2: byKey(p1.filter(p => p.serve_number === 2), p => p.serve_placement),
+    svcLoc2by1: byKey(p2.filter(p => p.serve_number === 1), p => p.serve_placement),
+    svcLoc2by2: byKey(p2.filter(p => p.serve_number === 2), p => p.serve_placement),
+    p1Total: p1.length, p2Total: p2.length,
   }
 }
 
 export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, sets }: Props) {
   const router = useRouter()
   const [activeSet, setActiveSet] = useState<'all' | number>('all')
+  const [activeTab, setActiveTab] = useState<StatTab>('all')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
-
-  async function handleDelete() {
-    setDeleting(true)
-    const supabase = createClient()
-    // Delete in dependency order (points → games → sets → match)
-    const setIds = sets.map(s => s.id)
-    const gameIds = sets.flatMap(s => s.games.map(g => g.id))
-    if (gameIds.length) await supabase.from('points').delete().in('game_id', gameIds)
-    if (gameIds.length) await supabase.from('games').delete().in('id', gameIds)
-    if (setIds.length) await supabase.from('sets').delete().in('id', setIds)
-    await supabase.from('matches').delete().eq('id', id)
-    router.push('/matches')
-  }
+  const [aiSummary, setAiSummary] = useState<string | null>(null)
+  const [loadingAI, setLoadingAI] = useState(false)
 
   const allPoints: Point[] = sets.flatMap(s => s.games.flatMap(g => g.points ?? []))
   const filteredPoints: Point[] = activeSet === 'all'
@@ -96,6 +110,41 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
   const t2Sets = sets.filter(s => s.winner === 'team2').length
   const winnerName = winner === 'team1' ? p1 : winner === 'team2' ? p2 : null
 
+  const fetchAI = useCallback(async () => {
+    setLoadingAI(true)
+    try {
+      const res = await fetch('/api/match-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p1, p2, stats: s }),
+      })
+      const data = await res.json()
+      setAiSummary(data.summary)
+    } catch { setAiSummary('Unable to generate summary.') }
+    setLoadingAI(false)
+  }, [p1, p2, JSON.stringify(s)])
+
+  async function handleDelete() {
+    setDeleting(true)
+    const supabase = createClient()
+    const setIds = sets.map(s => s.id)
+    const gameIds = sets.flatMap(s => s.games.map(g => g.id))
+    if (gameIds.length) await supabase.from('points').delete().in('game_id', gameIds)
+    if (gameIds.length) await supabase.from('games').delete().in('id', gameIds)
+    if (setIds.length) await supabase.from('sets').delete().in('id', setIds)
+    await supabase.from('matches').delete().eq('id', id)
+    router.push('/matches')
+  }
+
+  const statTabs: { id: StatTab; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'serves', label: 'Serves' },
+    { id: 'aces', label: 'Aces' },
+    { id: 'df', label: 'Dbl Faults' },
+    { id: 'winners', label: 'Winners' },
+    { id: 'ue', label: 'UE' },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Delete confirmation */}
@@ -103,7 +152,7 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 space-y-4">
             <h2 className="text-base font-semibold">Delete match?</h2>
-            <p className="text-sm text-zinc-400">This will permanently delete the match and all its points. This cannot be undone.</p>
+            <p className="text-sm text-zinc-400">This will permanently delete the match and all its points.</p>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</Button>
               <Button variant="destructive" className="flex-1" onClick={handleDelete} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</Button>
@@ -115,18 +164,13 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/matches" className="text-zinc-400 hover:text-zinc-100">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <Link href="/matches" className="text-zinc-400 hover:text-zinc-100"><ArrowLeft className="h-4 w-4" /></Link>
           <h1 className="text-xl font-semibold">{p1} vs {p2}</h1>
         </div>
         <div className="flex items-center gap-2">
           {status === 'in_progress' && (
             <Button asChild size="sm" variant="outline">
-              <Link href={`/matches/${id}/live`}>
-                <Radio className="h-4 w-4" />
-                Live
-              </Link>
+              <Link href={`/matches/${id}/live`}><Radio className="h-4 w-4" />Live</Link>
             </Button>
           )}
           <button onClick={() => setShowDeleteConfirm(true)} className="flex items-center justify-center rounded-md p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 transition-colors">
@@ -137,21 +181,15 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
 
       <div className="text-xs text-zinc-500">
         {matchType} · {formatDate(createdAt)} ·{' '}
-        {status === 'in_progress' ? (
-          <Badge variant="serve" className="animate-pulse">Live</Badge>
-        ) : status === 'completed' ? (
-          <Badge variant="success">Completed</Badge>
-        ) : (
-          <Badge variant="outline">Pending</Badge>
-        )}
+        {status === 'in_progress' ? <Badge variant="serve" className="animate-pulse">Live</Badge>
+          : status === 'completed' ? <Badge variant="success">Completed</Badge>
+          : <Badge variant="outline">Pending</Badge>}
       </div>
 
-      {/* Match score headline */}
+      {/* Match score */}
       <Card className="border-zinc-800">
         <CardContent className="p-4">
-          {winnerName && (
-            <p className="mb-3 text-center text-xs font-medium text-emerald-400">{winnerName} wins</p>
-          )}
+          {winnerName && <p className="mb-3 text-center text-xs font-medium text-emerald-400">{winnerName} wins</p>}
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             <div className="text-right">
               <p className={`text-sm font-medium ${winner === 'team1' ? 'text-white' : 'text-zinc-400'}`}>{p1}</p>
@@ -163,11 +201,9 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
               <p className="mt-0.5 font-mono text-4xl font-bold">{t2Sets}</p>
             </div>
           </div>
-
-          {/* Per-set game scores */}
           {sets.length > 0 && (
             <div className="mt-3 flex items-center justify-center gap-4 text-xs text-zinc-500">
-              {sets.map((set) => (
+              {sets.map(set => (
                 <span key={set.id} className={`font-mono ${set.winner === 'team1' ? 'text-blue-400' : set.winner === 'team2' ? 'text-rose-400' : 'text-zinc-400'}`}>
                   {set.team1_games}–{set.team2_games}
                 </span>
@@ -177,7 +213,7 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
         </CardContent>
       </Card>
 
-      {/* Point flow chart (always full match) */}
+      {/* Point flow */}
       {allPoints.length > 1 && (
         <Card>
           <CardHeader className="pb-2">
@@ -187,78 +223,238 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />{p2}</span>
             </div>
           </CardHeader>
-          <CardContent className="pb-4">
-            <TugOfWarChart points={allPoints} p1Name={p1} p2Name={p2} />
+          <CardContent className="pb-4"><TugOfWarChart points={allPoints} p1Name={p1} p2Name={p2} /></CardContent>
+        </Card>
+      )}
+
+      {/* Set filter */}
+      {sets.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto">
+          {(['all', ...sets.map(s => s.set_number)] as ('all' | number)[]).map(tab => (
+            <button key={tab} onClick={() => setActiveSet(tab)}
+              className={`flex-shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${activeSet === tab ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
+              {tab === 'all' ? 'Match' : `Set ${tab}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* AI Summary */}
+      <Card className="border-zinc-800">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-yellow-400" />
+              AI Analysis
+            </CardTitle>
+            {!aiSummary && (
+              <Button size="sm" variant="outline" onClick={fetchAI} disabled={loadingAI || allPoints.length < 5}>
+                {loadingAI ? 'Analyzing…' : 'Generate'}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {aiSummary ? (
+            <p className="text-sm text-zinc-300 leading-relaxed">{aiSummary}</p>
+          ) : (
+            <p className="text-xs text-zinc-600">{allPoints.length < 5 ? 'Need more points logged to generate analysis.' : 'Tap Generate for an AI match summary.'}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Stat category tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {statTabs.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className={`flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${activeTab === tab.id ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Stat content */}
+      {activeTab === 'all' && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">{activeSet === 'all' ? 'Match stats' : `Set ${activeSet} stats`}</CardTitle>
+              <div className="flex gap-6 text-xs font-medium">
+                <span className="text-blue-400">{p1}</span>
+                <span className="text-rose-400">{p2}</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <StatRow label="Points won" v1={s.team1Points} v2={s.team2Points} />
+            <StatRow label="Aces" v1={s.aces1} v2={s.aces2} />
+            <StatRow label="Double faults" v1={s.df1} v2={s.df2} lower />
+            <StatRow label="Winners" v1={s.winners1} v2={s.winners2} />
+            <StatRow label="Unforced errors" v1={s.ue1} v2={s.ue2} lower />
+            <StatRow label="1st serve %" v1={`${s.fs1pct}%`} v2={`${s.fs2pct}%`} />
+            <StatRow label="1st serve won" v1={`${s.fsWon1}/${s.fs1In}`} v2={`${s.fsWon2}/${s.fs2In}`} />
+            <StatRow label="2nd serve won" v1={`${s.ssWon1}/${s.ss1Total}`} v2={`${s.ssWon2}/${s.ss2Total}`} />
+            <StatRow label="1st return won" v1={`${s.fsRetWon1}/${s.fs2In}`} v2={`${s.fsRetWon2}/${s.fs1In}`} />
+            <StatRow label="2nd return won" v1={`${s.ssRetWon1}/${s.ss2Total}`} v2={`${s.ssRetWon2}/${s.ss1Total}`} />
+            <div className="flex items-center justify-center gap-2 pt-1 text-xs text-zinc-500">
+              <span>Avg rally: <span className="text-zinc-300">{s.avgRally} shots</span></span>
+              <span>·</span>
+              <span>Total: <span className="text-zinc-300">{filteredPoints.length} pts</span></span>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Set filter tabs */}
-      {sets.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto">
-          {(['all', ...sets.map(s => s.set_number)] as ('all' | number)[]).map((tab) => {
-            const label = tab === 'all' ? 'Match' : `Set ${tab}`
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveSet(tab)}
-                className={`flex-shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
-                  activeSet === tab
-                    ? 'border-white bg-zinc-700 text-white'
-                    : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                }`}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
+      {activeTab === 'serves' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Serve breakdown</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <TwoColHeader p1={p1} p2={p2} />
+            <StatRow label="1st serve %" v1={`${s.fs1pct}%`} v2={`${s.fs2pct}%`} />
+            <StatRow label="1st in" v1={`${s.fs1In}/${s.p1Total}`} v2={`${s.fs2In}/${s.p2Total}`} />
+            <StatRow label="2nd in" v1={`${s.ss1Total - s.df1}/${s.ss1Total}`} v2={`${s.ss2Total - s.df2}/${s.ss2Total}`} />
+            <Divider label="1st serve locations (in)" />
+            <BreakdownRow label="T" v1={s.svcLoc1by1['T'] ?? 0} v2={s.svcLoc2by1['T'] ?? 0} max={s.p1Total} />
+            <BreakdownRow label="Body" v1={s.svcLoc1by1['body'] ?? 0} v2={s.svcLoc2by1['body'] ?? 0} max={s.p1Total} />
+            <BreakdownRow label="Wide" v1={s.svcLoc1by1['wide'] ?? 0} v2={s.svcLoc2by1['wide'] ?? 0} max={s.p1Total} />
+            <Divider label="2nd serve locations (in)" />
+            <BreakdownRow label="T" v1={s.svcLoc1by2['T'] ?? 0} v2={s.svcLoc2by2['T'] ?? 0} max={s.ss1Total || 1} />
+            <BreakdownRow label="Body" v1={s.svcLoc1by2['body'] ?? 0} v2={s.svcLoc2by2['body'] ?? 0} max={s.ss1Total || 1} />
+            <BreakdownRow label="Wide" v1={s.svcLoc1by2['wide'] ?? 0} v2={s.svcLoc2by2['wide'] ?? 0} max={s.ss1Total || 1} />
+          </CardContent>
+        </Card>
       )}
 
-      {/* Stats */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">
-              {activeSet === 'all' ? 'Match stats' : `Set ${activeSet} stats`}
-            </CardTitle>
-            <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 text-xs">
-              <span className="text-right font-medium text-blue-400">{p1}</span>
-              <span />
-              <span className="text-left font-medium text-rose-400">{p2}</span>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <StatRow label="Points won" v1={s.team1Points} v2={s.team2Points} />
-          <StatRow label="Aces" v1={s.aces1} v2={s.aces2} />
-          <StatRow label="Double faults" v1={s.df1} v2={s.df2} lower />
-          <StatRow label="Winners" v1={s.winners1} v2={s.winners2} />
-          <StatRow label="Unforced errors" v1={s.ue1} v2={s.ue2} lower />
-          <StatRow label="1st serve %" v1={`${s.fs1pct}%`} v2={`${s.fs2pct}%`} />
-          <StatRow label="1st serve won" v1={`${s.fsWon1}/${s.fs1In}`} v2={`${s.fsWon2}/${s.fs2In}`} />
-          <StatRow label="2nd serve won" v1={`${s.ssWon1}/${s.ss1Total}`} v2={`${s.ssWon2}/${s.ss2Total}`} />
-          <StatRow label="1st return won" v1={`${s.fsRetWon1}/${s.fs2In}`} v2={`${s.fsRetWon2}/${s.fs1In}`} />
-          <StatRow label="2nd return won" v1={`${s.ssRetWon1}/${s.ss2Total}`} v2={`${s.ssRetWon2}/${s.ss1Total}`} />
-          <div className="flex items-center justify-center gap-2 pt-1 text-xs text-zinc-500">
-            <span>Avg rally: <span className="text-zinc-300">{s.avgRally} shots</span></span>
-            <span>·</span>
-            <span>Total points: <span className="text-zinc-300">{filteredPoints.length}</span></span>
-          </div>
-        </CardContent>
-      </Card>
+      {activeTab === 'aces' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Aces</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <TwoColHeader p1={p1} p2={p2} />
+            <StatRow label="Total aces" v1={s.aces1} v2={s.aces2} />
+            <Divider label="By serve" />
+            <BreakdownRow label="1st serve" v1={s.aceServe1['1'] ?? 0} v2={s.aceServe2['1'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
+            <BreakdownRow label="2nd serve" v1={s.aceServe1['2'] ?? 0} v2={s.aceServe2['2'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
+            <Divider label="By location" />
+            <BreakdownRow label="T" v1={s.aceLoc1['T'] ?? 0} v2={s.aceLoc2['T'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
+            <BreakdownRow label="Body" v1={s.aceLoc1['body'] ?? 0} v2={s.aceLoc2['body'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
+            <BreakdownRow label="Wide" v1={s.aceLoc1['wide'] ?? 0} v2={s.aceLoc2['wide'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'df' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Double faults</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <TwoColHeader p1={p1} p2={p2} />
+            <StatRow label="Total DFs" v1={s.df1} v2={s.df2} lower />
+            <Divider label="2nd serve location when faulting" />
+            <BreakdownRow label="T" v1={s.dfLoc1['T'] ?? 0} v2={s.dfLoc2['T'] ?? 0} max={Math.max(s.df1, s.df2, 1)} />
+            <BreakdownRow label="Body" v1={s.dfLoc1['body'] ?? 0} v2={s.dfLoc2['body'] ?? 0} max={Math.max(s.df1, s.df2, 1)} />
+            <BreakdownRow label="Wide" v1={s.dfLoc1['wide'] ?? 0} v2={s.dfLoc2['wide'] ?? 0} max={Math.max(s.df1, s.df2, 1)} />
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'winners' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Winners</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <TwoColHeader p1={p1} p2={p2} />
+            <StatRow label="Total winners" v1={s.winners1} v2={s.winners2} />
+            <Divider label="By stroke" />
+            {(['forehand', 'backhand', 'return', 'forehand_volley', 'backhand_volley', 'overhead', 'lob', 'drop_shot'] as const).map(shot => {
+              const v1 = s.winnerStrokes1[shot] ?? 0
+              const v2 = s.winnerStrokes2[shot] ?? 0
+              if (v1 + v2 === 0) return null
+              return <BreakdownRow key={shot} label={SHOT_LABEL[shot]} v1={v1} v2={v2} max={Math.max(s.winners1, s.winners2, 1)} />
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'ue' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Unforced errors</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <TwoColHeader p1={p1} p2={p2} />
+            <StatRow label="Total UEs" v1={s.ue1} v2={s.ue2} lower />
+            <Divider label="By stroke" />
+            {(['forehand', 'backhand', 'return', 'forehand_volley', 'backhand_volley', 'overhead', 'lob', 'drop_shot'] as const).map(shot => {
+              const v1 = s.ueStrokes1[shot] ?? 0
+              const v2 = s.ueStrokes2[shot] ?? 0
+              if (v1 + v2 === 0) return null
+              return <BreakdownRow key={shot} label={SHOT_LABEL[shot]} v1={v1} v2={v2} max={Math.max(s.ue1, s.ue2, 1)} />
+            })}
+            <Divider label="Error direction" />
+            <BreakdownRow label="Long" v1={s.ueDirs1['long'] ?? 0} v2={s.ueDirs2['long'] ?? 0} max={Math.max(s.ue1, s.ue2, 1)} />
+            <BreakdownRow label="Wide" v1={s.ueDirs1['wide'] ?? 0} v2={s.ueDirs2['wide'] ?? 0} max={Math.max(s.ue1, s.ue2, 1)} />
+            <BreakdownRow label="Net" v1={s.ueDirs1['net'] ?? 0} v2={s.ueDirs2['net'] ?? 0} max={Math.max(s.ue1, s.ue2, 1)} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Point log */}
       {filteredPoints.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-zinc-400">Point log</h2>
           <div className="space-y-1">
-            {filteredPoints.map((pt, i) => (
-              <PointRow key={pt.id} point={pt} index={i + 1} />
-            ))}
+            {filteredPoints.map((pt, i) => <PointRow key={pt.id} point={pt} index={i + 1} />)}
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const SHOT_LABEL: Record<string, string> = {
+  forehand: 'Forehand', backhand: 'Backhand', forehand_volley: 'FH Volley',
+  backhand_volley: 'BH Volley', overhead: 'Overhead', lob: 'Lob',
+  drop_shot: 'Drop shot', serve: 'Serve', return: 'Return',
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function TwoColHeader({ p1, p2 }: { p1: string; p2: string }) {
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] gap-3 text-xs font-semibold">
+      <span className="text-right text-blue-400">{p1}</span>
+      <span />
+      <span className="text-left text-rose-400">{p2}</span>
+    </div>
+  )
+}
+
+function Divider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <div className="h-px flex-1 bg-zinc-800" />
+      <span className="text-xs text-zinc-500">{label}</span>
+      <div className="h-px flex-1 bg-zinc-800" />
+    </div>
+  )
+}
+
+function BreakdownRow({ label, v1, v2, max }: { label: string; v1: number; v2: number; max: number }) {
+  const pct1 = max > 0 ? (v1 / max) * 100 : 0
+  const pct2 = max > 0 ? (v2 / max) * 100 : 0
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
+      <div className="flex items-center justify-end gap-2">
+        <span className="font-mono text-zinc-300 w-4 text-right">{v1}</span>
+        <div className="h-2 rounded-full bg-blue-400/30 overflow-hidden" style={{ width: 60 }}>
+          <div className="h-full rounded-full bg-blue-400 transition-all" style={{ width: `${pct1}%`, marginLeft: `${100 - pct1}%` }} />
+        </div>
+      </div>
+      <span className="text-center text-zinc-500 w-16">{label}</span>
+      <div className="flex items-center gap-2">
+        <div className="h-2 rounded-full bg-rose-400/30 overflow-hidden" style={{ width: 60 }}>
+          <div className="h-full rounded-full bg-rose-400 transition-all" style={{ width: `${pct2}%` }} />
+        </div>
+        <span className="font-mono text-zinc-300 w-4">{v2}</span>
+      </div>
     </div>
   )
 }
@@ -320,10 +516,7 @@ function PointRow({ point, index }: { point: Point; index: number }) {
       <span className="w-5 text-zinc-600">#{index}</span>
       <span className="text-zinc-500">{point.serve_number === 1 ? '1st' : '2nd'}</span>
       {point.outcome && (
-        <Badge
-          variant={point.outcome === 'winner' || point.outcome === 'ace' ? 'success' : point.outcome === 'unforced_error' || point.outcome === 'error' ? 'destructive' : 'default'}
-          className="text-xs"
-        >
+        <Badge variant={point.outcome === 'winner' || point.outcome === 'ace' ? 'success' : point.outcome === 'unforced_error' || point.outcome === 'error' ? 'destructive' : 'default'} className="text-xs">
           {outcomeLabel[point.outcome] ?? point.outcome}
         </Badge>
       )}

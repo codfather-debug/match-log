@@ -712,75 +712,98 @@ function ServeCourtDiagram({
 // ─── Error direction court diagram ────────────────────────────────────────────
 
 function ErrorCourtDiagram({ onSelect }: { onSelect: (dir: 'long' | 'wide' | 'net') => void }) {
+  const [pressed, setPressed] = useState<string | null>(null)
+
+  // Full-court top-down view. Hitter is at BOTTOM, opponent at TOP.
+  const W = 320, H = 280
+  const dblL = 22, dblR = 298
+  const sglL = 55, sglR = 265
+  const baseTop = 16        // opponent baseline (top)
+  const svcTop = 79         // opponent service line
+  const netY = 140          // net (middle)
+  const svcBot = 201        // hitter's service line
+  const baseBot = 264       // hitter's baseline (bottom)
+  const midX = (sglL + sglR) / 2
+
+  // Long: strip above opponent's baseline
+  const longY1 = 4, longY2 = baseTop + 10
+  // Net: strip around the net
+  const netY1 = netY - 8, netY2 = netY + 8
+  // Wide: full-height strips outside singles sidelines (within doubles)
+  const wideW = sglL - dblL   // 33px
+
+  const tap = (zone: string, cb: () => void) => ({
+    fill: pressed === zone ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.07)',
+    style: { cursor: 'pointer' } as React.CSSProperties,
+    onPointerDown: () => setPressed(zone),
+    onPointerUp: () => { setPressed(null); cb() },
+    onPointerLeave: () => setPressed(null),
+  })
+
   return (
-    <div className="space-y-1.5">
-      {/* Long zone — beyond baseline */}
-      <button
-        type="button"
-        onClick={() => onSelect('long')}
-        className="w-full rounded-lg border border-zinc-700 bg-zinc-900/80 py-4 text-sm font-semibold text-zinc-100 hover:bg-zinc-800 active:scale-95 transition-all"
-      >
-        Long — past the baseline
-      </button>
+    <div className="overflow-hidden rounded-xl border border-white/10">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ display: 'block' }}>
+        {/* Outside-court */}
+        <rect width={W} height={H} fill="#4aaa46" />
+        {/* Court surface */}
+        <rect x={dblL} y={baseTop} width={dblR - dblL} height={baseBot - baseTop} fill="#5cb85c" />
 
-      {/* Court visual with Wide zones and Net */}
-      <div className="relative overflow-hidden rounded-lg border border-zinc-600 bg-emerald-950/60" style={{ minHeight: 140 }}>
-        {/* Court lines */}
-        <svg viewBox="0 0 320 140" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          {/* Court outline */}
-          <rect x="40" y="8" width="240" height="124" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" />
-          {/* Net line */}
-          <line x1="40" y1="70" x2="280" y2="70" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" />
-          {/* Center service line */}
-          <line x1="160" y1="70" x2="160" y2="132" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
-          {/* Service boxes top */}
-          <line x1="40" y1="8" x2="280" y2="8" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-        </svg>
+        {/* Long tap zone (beyond opponent baseline, top) */}
+        <rect x={dblL} y={longY1} width={dblR - dblL} height={longY2 - longY1}
+          {...tap('long', () => onSelect('long'))} />
 
-        {/* Net label */}
-        <div className="absolute left-0 right-0 flex items-center justify-center" style={{ top: '49%' }}>
-          <span className="bg-zinc-700/80 px-2 py-0.5 text-xs font-bold text-zinc-300 rounded pointer-events-none">NET</span>
-        </div>
+        {/* Wide tap zones (sides) */}
+        <rect x={dblL} y={baseTop} width={wideW} height={baseBot - baseTop}
+          {...tap('wide', () => onSelect('wide'))} />
+        <rect x={sglR} y={baseTop} width={wideW} height={baseBot - baseTop}
+          {...tap('wide', () => onSelect('wide'))} />
 
-        {/* Wide left */}
-        <button
-          type="button"
-          onClick={() => onSelect('wide')}
-          className="absolute left-0 top-0 bottom-0 flex items-center justify-center hover:bg-red-900/30 active:bg-red-900/50 transition-colors"
-          style={{ width: '12.5%' }}
-        >
-          <span className="text-xs font-bold text-red-300 -rotate-90 whitespace-nowrap">Wide</span>
-        </button>
+        {/* Net tap zone */}
+        <rect x={sglL} y={netY1} width={sglR - sglL} height={netY2 - netY1}
+          {...tap('net', () => onSelect('net'))} />
 
-        {/* Wide right */}
-        <button
-          type="button"
-          onClick={() => onSelect('wide')}
-          className="absolute right-0 top-0 bottom-0 flex items-center justify-center hover:bg-red-900/30 active:bg-red-900/50 transition-colors"
-          style={{ width: '12.5%' }}
-        >
-          <span className="text-xs font-bold text-red-300 rotate-90 whitespace-nowrap">Wide</span>
-        </button>
+        {/* ── Court lines ── */}
+        <rect x={dblL} y={baseTop} width={dblR - dblL} height={baseBot - baseTop}
+          fill="none" stroke="white" strokeWidth="1.5" />
+        <line x1={sglL} y1={baseTop} x2={sglL} y2={baseBot} stroke="white" strokeWidth="1.5" />
+        <line x1={sglR} y1={baseTop} x2={sglR} y2={baseBot} stroke="white" strokeWidth="1.5" />
+        <line x1={sglL} y1={svcTop} x2={sglR} y2={svcTop} stroke="white" strokeWidth="1.5" />
+        <line x1={sglL} y1={svcBot} x2={sglR} y2={svcBot} stroke="white" strokeWidth="1.5" />
+        <line x1={midX} y1={svcTop} x2={midX} y2={svcBot} stroke="white" strokeWidth="1.5" />
+        <line x1={midX} y1={baseTop} x2={midX} y2={baseTop + 8} stroke="white" strokeWidth="1.5" />
+        <line x1={midX} y1={baseBot} x2={midX} y2={baseBot - 8} stroke="white" strokeWidth="1.5" />
 
-        {/* Net zone — lower half */}
-        <button
-          type="button"
-          onClick={() => onSelect('net')}
-          className="absolute left-0 right-0 bottom-0 flex items-center justify-center hover:bg-orange-900/30 active:bg-orange-900/50 transition-colors"
-          style={{ top: '50%', left: '12.5%', right: '12.5%' }}
-        >
-          <span className="text-sm font-semibold text-orange-300">Into the net</span>
-        </button>
+        {/* Net */}
+        <line x1={dblL - 4} y1={netY} x2={dblR + 4} y2={netY} stroke="white" strokeWidth="2.5" />
+        <circle cx={dblL - 4} cy={netY} r="3" fill="white" />
+        <circle cx={dblR + 4} cy={netY} r="3" fill="white" />
+        <line x1={midX} y1={netY - 4} x2={midX} y2={netY + 4} stroke="white" strokeWidth="1.5" />
 
-        {/* In-court area (non-interactive visual) */}
-        <div className="absolute pointer-events-none" style={{ top: '5%', bottom: '50%', left: '12.5%', right: '12.5%' }}>
-          <div className="flex h-full items-center justify-center">
-            <span className="text-xs text-emerald-300/40">opponent's court</span>
-          </div>
-        </div>
-      </div>
+        {/* Labels */}
+        <text x={midX} y={longY1 + 10} textAnchor="middle"
+          fill="white" fontSize="11" fontWeight="bold" fontFamily="system-ui, sans-serif"
+          style={{ pointerEvents: 'none' }}>LONG</text>
 
-      <p className="text-center text-xs text-zinc-600">Tap where the ball went</p>
+        <text x={dblL + wideW / 2} y={(baseTop + baseBot) / 2}
+          textAnchor="middle" fill="white" fontSize="9" fontWeight="bold"
+          fontFamily="system-ui, sans-serif" style={{ pointerEvents: 'none' }}
+          transform={`rotate(-90, ${dblL + wideW / 2}, ${(baseTop + baseBot) / 2})`}>WIDE</text>
+        <text x={sglR + wideW / 2} y={(baseTop + baseBot) / 2}
+          textAnchor="middle" fill="white" fontSize="9" fontWeight="bold"
+          fontFamily="system-ui, sans-serif" style={{ pointerEvents: 'none' }}
+          transform={`rotate(90, ${sglR + wideW / 2}, ${(baseTop + baseBot) / 2})`}>WIDE</text>
+
+        <text x={midX} y={netY + 5} textAnchor="middle"
+          fill="white" fontSize="9" fontWeight="bold" fontFamily="system-ui, sans-serif"
+          style={{ pointerEvents: 'none' }}>NET</text>
+
+        <text x={midX} y={(baseTop + svcTop) / 2 + 5} textAnchor="middle"
+          fill="rgba(255,255,255,0.25)" fontSize="8" fontFamily="system-ui, sans-serif"
+          style={{ pointerEvents: 'none' }}>opponent</text>
+        <text x={midX} y={(svcBot + baseBot) / 2 + 5} textAnchor="middle"
+          fill="rgba(255,255,255,0.25)" fontSize="8" fontFamily="system-ui, sans-serif"
+          style={{ pointerEvents: 'none' }}>you</text>
+      </svg>
     </div>
   )
 }
