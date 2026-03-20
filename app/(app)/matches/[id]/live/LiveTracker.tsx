@@ -107,7 +107,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function back() {
-    const stepOrder: Step[] = ['serve_placement', 'serve_result', 'outcome', 'shot_type', 'error_direction', 'point_winner', 'confirm']
+    const stepOrder: Step[] = ['serve_placement', 'serve_result', 'shot_type', 'error_direction', 'point_winner', 'confirm']
     const idx = stepOrder.indexOf(step)
     if (idx > 0) setStep(stepOrder[idx - 1])
   }
@@ -429,8 +429,9 @@ function StepContent({
   }
 
   if (step === 'serve_result') {
+    const faultLabel = isSecond ? 'Double Fault' : 'Fault (missed serve)'
     return (
-      <StepCard title={`${isSecond ? '2nd' : '1st'} serve result`}>
+      <StepCard title={`${isSecond ? '2nd' : '1st'} serve`}>
         <div className="flex flex-col gap-2">
           <ChoiceBtn
             label="Ace ★"
@@ -440,9 +441,11 @@ function StepContent({
               onSave(d)
             }}
           />
-          <ChoiceBtn label="In play →" onClick={() => onGo('outcome', { serve_result: 'in_play' })} />
+          <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('shot_type', { serve_result: 'in_play' as ServeResult, outcome: 'winner' as PointOutcome })} />
+          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('shot_type', { serve_result: 'in_play' as ServeResult, outcome: 'unforced_error' as PointOutcome })} />
+          <ChoiceBtn label="Forced Error" onClick={() => onGo('shot_type', { serve_result: 'in_play' as ServeResult, outcome: 'error' as PointOutcome })} />
           <ChoiceBtn
-            label={isSecond ? 'Double fault' : 'Fault'}
+            label={faultLabel}
             accent="red"
             onClick={() => {
               if (isSecond) {
@@ -454,18 +457,6 @@ function StepContent({
               }
             }}
           />
-        </div>
-      </StepCard>
-    )
-  }
-
-  if (step === 'outcome') {
-    return (
-      <StepCard title="How did the point end?">
-        <div className="flex flex-col gap-2">
-          <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('shot_type', { outcome: 'winner' })} />
-          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('shot_type', { outcome: 'unforced_error' })} />
-          <ChoiceBtn label="Forced Error" onClick={() => onGo('shot_type', { outcome: 'error' })} />
         </div>
       </StepCard>
     )
