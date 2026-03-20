@@ -26,6 +26,7 @@ export type ShotType =
   | 'lob'
   | 'drop_shot'
   | 'serve'
+  | 'return'
 
 export interface Player {
   id: string

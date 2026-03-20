@@ -383,26 +383,25 @@ function StepContent({
 
   if (step === 'serve_placement') {
     return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-zinc-200">{serverName} serving</p>
-          {/* 1st / 2nd toggle */}
-          <div className="flex rounded-md border border-zinc-700 overflow-hidden text-xs">
-            <button
-              type="button"
-              onClick={() => setServeNumber(1)}
-              className={`px-3 py-1.5 transition-colors ${!isSecond ? 'bg-white text-black font-semibold' : 'text-zinc-400 hover:bg-zinc-800'}`}
-            >
-              1st
-            </button>
-            <button
-              type="button"
-              onClick={() => setServeNumber(2)}
-              className={`px-3 py-1.5 transition-colors ${isSecond ? 'bg-orange-500 text-white font-semibold' : 'text-zinc-400 hover:bg-zinc-800'}`}
-            >
-              2nd
-            </button>
-          </div>
+      <div className="space-y-4">
+        <p className="text-sm font-medium text-zinc-200">{serverName} serving</p>
+
+        {/* 1st / 2nd toggle — bigger */}
+        <div className="grid grid-cols-2 rounded-xl border border-zinc-700 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setServeNumber(1)}
+            className={`py-3.5 text-base font-semibold transition-colors ${!isSecond ? 'bg-white text-black' : 'text-zinc-400 hover:bg-zinc-800'}`}
+          >
+            1st Serve
+          </button>
+          <button
+            type="button"
+            onClick={() => setServeNumber(2)}
+            className={`py-3.5 text-base font-semibold transition-colors ${isSecond ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:bg-zinc-800'}`}
+          >
+            2nd Serve
+          </button>
         </div>
 
         {/* Court diagram */}
@@ -410,6 +409,21 @@ function StepContent({
           courtSide={courtSide}
           onSelect={(placement) => onGo('serve_result', { serve_placement: placement })}
         />
+
+        {/* Double fault button — only on 2nd serve */}
+        {isSecond && (
+          <button
+            type="button"
+            onClick={() => {
+              const otherTeam: Team = teamOfPlayer(server) === 'team1' ? 'team2' : 'team1'
+              const d = { ...draft, serve_result: 'double_fault' as ServeResult, outcome: 'double_fault' as PointOutcome, point_winner: otherTeam, rally_length: 0, last_shot_type: 'serve' as ShotType }
+              onSave(d)
+            }}
+            className="w-full rounded-lg border border-red-700/50 bg-red-900/30 py-4 text-sm font-semibold text-red-300 hover:bg-red-900/50 transition-colors"
+          >
+            Double Fault
+          </button>
+        )}
       </div>
     )
   }
@@ -448,12 +462,10 @@ function StepContent({
   if (step === 'outcome') {
     return (
       <StepCard title="How did the point end?">
-        <div className="space-y-2">
-          <Grid2>
-            <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('shot_type', { outcome: 'winner' })} />
-            <ChoiceBtn label="Unforced error" accent="red" onClick={() => onGo('shot_type', { outcome: 'unforced_error' })} />
-          </Grid2>
-          <ChoiceBtn label="Forced error" onClick={() => onGo('shot_type', { outcome: 'error' })} />
+        <div className="flex flex-col gap-2">
+          <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('shot_type', { outcome: 'winner' })} />
+          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('shot_type', { outcome: 'unforced_error' })} />
+          <ChoiceBtn label="Forced Error" onClick={() => onGo('shot_type', { outcome: 'error' })} />
         </div>
       </StepCard>
     )
@@ -464,16 +476,15 @@ function StepContent({
     const next = isError ? 'error_direction' : 'point_winner'
     return (
       <StepCard title="Last shot">
-        <div className="space-y-2">
-          <Grid2>
-            <ChoiceBtn label="Forehand" onClick={() => onGo(next, { last_shot_type: 'forehand' })} />
-            <ChoiceBtn label="Backhand" onClick={() => onGo(next, { last_shot_type: 'backhand' })} />
-            <ChoiceBtn label="FH Volley" onClick={() => onGo(next, { last_shot_type: 'forehand_volley' })} />
-            <ChoiceBtn label="BH Volley" onClick={() => onGo(next, { last_shot_type: 'backhand_volley' })} />
-            <ChoiceBtn label="Overhead" onClick={() => onGo(next, { last_shot_type: 'overhead' })} />
-            <ChoiceBtn label="Lob" onClick={() => onGo(next, { last_shot_type: 'lob' })} />
-          </Grid2>
-          <ChoiceBtn label="Drop shot" onClick={() => onGo(next, { last_shot_type: 'drop_shot' })} />
+        <div className="flex flex-col gap-2">
+          <ChoiceBtn label="Forehand" onClick={() => onGo(next, { last_shot_type: 'forehand' })} />
+          <ChoiceBtn label="Backhand" onClick={() => onGo(next, { last_shot_type: 'backhand' })} />
+          <ChoiceBtn label="Return" onClick={() => onGo(next, { last_shot_type: 'return' })} />
+          <ChoiceBtn label="FH Volley" onClick={() => onGo(next, { last_shot_type: 'forehand_volley' })} />
+          <ChoiceBtn label="BH Volley" onClick={() => onGo(next, { last_shot_type: 'backhand_volley' })} />
+          <ChoiceBtn label="Overhead" onClick={() => onGo(next, { last_shot_type: 'overhead' })} />
+          <ChoiceBtn label="Lob" onClick={() => onGo(next, { last_shot_type: 'lob' })} />
+          <ChoiceBtn label="Drop Shot" onClick={() => onGo(next, { last_shot_type: 'drop_shot' })} />
         </div>
       </StepCard>
     )
@@ -482,11 +493,7 @@ function StepContent({
   if (step === 'error_direction') {
     return (
       <StepCard title="Where did it go?">
-        <Grid3>
-          <ChoiceBtn label="Long" onClick={() => onGo('point_winner', { error_direction: 'long' })} />
-          <ChoiceBtn label="Wide" onClick={() => onGo('point_winner', { error_direction: 'wide' })} />
-          <ChoiceBtn label="Net" onClick={() => onGo('point_winner', { error_direction: 'net' })} />
-        </Grid3>
+        <ErrorCourtDiagram onSelect={(dir) => onGo('point_winner', { error_direction: dir })} />
       </StepCard>
     )
   }
@@ -526,7 +533,7 @@ function StepContent({
 
   if (step === 'confirm') {
     const outcomeMap: Record<string, string> = { winner: 'Winner', error: 'Forced Error', unforced_error: 'Unforced Error', ace: 'Ace', double_fault: 'Double Fault' }
-    const shotMap: Record<string, string> = { forehand: 'Forehand', backhand: 'Backhand', forehand_volley: 'FH Volley', backhand_volley: 'BH Volley', overhead: 'Overhead', lob: 'Lob', drop_shot: 'Drop shot', serve: 'Serve' }
+    const shotMap: Record<string, string> = { forehand: 'Forehand', backhand: 'Backhand', forehand_volley: 'FH Volley', backhand_volley: 'BH Volley', overhead: 'Overhead', lob: 'Lob', drop_shot: 'Drop shot', serve: 'Serve', return: 'Return' }
     const winnerName = draft.point_winner === 'team1' ? p1Name : p2Name
 
     return (
@@ -618,6 +625,82 @@ function ServeCourtDiagram({
   )
 }
 
+// ─── Error direction court diagram ────────────────────────────────────────────
+
+function ErrorCourtDiagram({ onSelect }: { onSelect: (dir: 'long' | 'wide' | 'net') => void }) {
+  return (
+    <div className="space-y-1.5">
+      {/* Long zone — beyond baseline */}
+      <button
+        type="button"
+        onClick={() => onSelect('long')}
+        className="w-full rounded-lg border border-zinc-700 bg-zinc-900/80 py-4 text-sm font-semibold text-zinc-100 hover:bg-zinc-800 active:scale-95 transition-all"
+      >
+        Long — past the baseline
+      </button>
+
+      {/* Court visual with Wide zones and Net */}
+      <div className="relative overflow-hidden rounded-lg border border-zinc-600 bg-emerald-950/60" style={{ minHeight: 140 }}>
+        {/* Court lines */}
+        <svg viewBox="0 0 320 140" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          {/* Court outline */}
+          <rect x="40" y="8" width="240" height="124" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" />
+          {/* Net line */}
+          <line x1="40" y1="70" x2="280" y2="70" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" />
+          {/* Center service line */}
+          <line x1="160" y1="70" x2="160" y2="132" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+          {/* Service boxes top */}
+          <line x1="40" y1="8" x2="280" y2="8" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+        </svg>
+
+        {/* Net label */}
+        <div className="absolute left-0 right-0 flex items-center justify-center" style={{ top: '49%' }}>
+          <span className="bg-zinc-700/80 px-2 py-0.5 text-xs font-bold text-zinc-300 rounded pointer-events-none">NET</span>
+        </div>
+
+        {/* Wide left */}
+        <button
+          type="button"
+          onClick={() => onSelect('wide')}
+          className="absolute left-0 top-0 bottom-0 flex items-center justify-center hover:bg-red-900/30 active:bg-red-900/50 transition-colors"
+          style={{ width: '12.5%' }}
+        >
+          <span className="text-xs font-bold text-red-300 -rotate-90 whitespace-nowrap">Wide</span>
+        </button>
+
+        {/* Wide right */}
+        <button
+          type="button"
+          onClick={() => onSelect('wide')}
+          className="absolute right-0 top-0 bottom-0 flex items-center justify-center hover:bg-red-900/30 active:bg-red-900/50 transition-colors"
+          style={{ width: '12.5%' }}
+        >
+          <span className="text-xs font-bold text-red-300 rotate-90 whitespace-nowrap">Wide</span>
+        </button>
+
+        {/* Net zone — lower half */}
+        <button
+          type="button"
+          onClick={() => onSelect('net')}
+          className="absolute left-0 right-0 bottom-0 flex items-center justify-center hover:bg-orange-900/30 active:bg-orange-900/50 transition-colors"
+          style={{ top: '50%', left: '12.5%', right: '12.5%' }}
+        >
+          <span className="text-sm font-semibold text-orange-300">Into the net</span>
+        </button>
+
+        {/* In-court area (non-interactive visual) */}
+        <div className="absolute pointer-events-none" style={{ top: '5%', bottom: '50%', left: '12.5%', right: '12.5%' }}>
+          <div className="flex h-full items-center justify-center">
+            <span className="text-xs text-emerald-300/40">opponent's court</span>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-center text-xs text-zinc-600">Tap where the ball went</p>
+    </div>
+  )
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function StepCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -661,7 +744,7 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
 function MiniPointRow({ point }: { point: Point }) {
   const outcomeColors: Record<string, string> = { ace: 'text-emerald-400', winner: 'text-emerald-400', error: 'text-red-400', unforced_error: 'text-red-400', double_fault: 'text-red-400' }
   const shortOutcome: Record<string, string> = { ace: 'Ace', winner: 'W', error: 'E', unforced_error: 'UE', double_fault: 'DF' }
-  const shortShot: Record<string, string> = { forehand: 'FH', backhand: 'BH', forehand_volley: 'FH Vol', backhand_volley: 'BH Vol', overhead: 'OH', lob: 'Lob', drop_shot: 'Drop', serve: 'Srv' }
+  const shortShot: Record<string, string> = { forehand: 'FH', backhand: 'BH', forehand_volley: 'FH Vol', backhand_volley: 'BH Vol', overhead: 'OH', lob: 'Lob', drop_shot: 'Drop', serve: 'Srv', return: 'Ret' }
   return (
     <div className="flex items-center gap-2 text-xs text-zinc-500">
       <span className={outcomeColors[point.outcome ?? ''] ?? 'text-zinc-400'}>{shortOutcome[point.outcome ?? ''] ?? '?'}</span>
