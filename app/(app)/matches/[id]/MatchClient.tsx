@@ -143,7 +143,7 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
     { id: 'aces', label: 'Aces' },
     { id: 'df', label: 'Dbl Faults' },
     { id: 'winners', label: 'Winners' },
-    { id: 'ue', label: 'UE' },
+    { id: 'ue', label: 'UErrors' },
   ]
 
   return (
