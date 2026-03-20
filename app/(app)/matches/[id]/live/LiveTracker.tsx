@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, ChevronLeft, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle } from 'lucide-react'
 import Link from 'next/link'
 import {
   gameWinner,
@@ -27,11 +27,9 @@ import type {
   PlayerSlot,
   Team,
   ServeNumber,
-  ServePlacement,
   ServeResult,
   PointOutcome,
   ShotType,
-  ErrorDirection,
 } from '@/types/tennis'
 
 type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'confirm'
@@ -52,15 +50,18 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const router = useRouter()
   const supabase = createClient()
 
-  // Derive current set/game from data
   const currentSet = match.sets?.find((s) => !s.winner) ?? match.sets?.[match.sets.length - 1]
   const currentGame = currentSet?.games?.find((g) => !g.winner) ?? currentSet?.games?.[currentSet.games.length - 1]
   const completedPoints = currentGame?.points ?? []
 
   const [draft, setDraft] = useState<PointDraft>(emptyDraft())
   const [step, setStep] = useState<Step>('serve_placement')
+  // Track serve number in state so 2nd serve shows correctly within a point flow
+  const [serveNumber, setServeNumber] = useState<ServeNumber>(1)
   const [saving, setSaving] = useState(false)
   const [lastUndo, setLastUndo] = useState<Point | null>(null)
+  const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [ending, setEnding] = useState(false)
 
   if (!currentSet || !currentGame) {
     return (
@@ -70,7 +71,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     )
   }
 
-  // narrowed references used inside savePoint / undoLastPoint
   const game = currentGame
   const setData = currentSet
 
@@ -80,7 +80,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const serverTeam = teamOfPlayer(server)
   const servingName = serverTeam === 'team1' ? p1Name : p2Name
 
-  // Score display
   const completedSets = match.sets?.filter((s) => s.winner) ?? []
   const t1sets = completedSets.filter((s) => s.winner === 'team1').length
   const t2sets = completedSets.filter((s) => s.winner === 'team2').length
@@ -93,21 +92,22 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const t2label = isTB ? String(t2g) : pointLabel(t2g, t1g, match.format?.noAd)
   const isDeuce = !isTB && isDeuceGame(t1g, t2g) && t1g === t2g
 
-  // Court side
   const totalPts = t1g + t2g
   const courtSide = totalPts % 2 === 0 ? 'Deuce' : 'Ad'
-
-  // serve number auto-logic from last point in game
-  const lastPoint = completedPoints[completedPoints.length - 1]
-  const currentServeNumber: ServeNumber = (lastPoint?.serve_result === 'fault' ? 2 : 1) as ServeNumber
 
   function go(nextStep: Step, update: Partial<PointDraft>) {
     setDraft((d) => ({ ...d, ...update }))
     setStep(nextStep)
   }
 
+  function handleFault() {
+    // On fault during 1st serve: switch to 2nd serve and go back to placement
+    setServeNumber(2)
+    setDraft((d) => ({ ...d, serve_result: 'fault' }))
+    setStep('serve_placement')
+  }
+
   function back() {
-    // Step back
     const stepOrder: Step[] = ['serve_placement', 'serve_result', 'outcome', 'shot_type', 'error_direction', 'confirm']
     const idx = stepOrder.indexOf(step)
     if (idx > 0) setStep(stepOrder[idx - 1])
@@ -122,7 +122,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       match_id: match.id,
       point_number: completedPoints.length + 1,
       server,
-      serve_number: currentServeNumber,
+      serve_number: serveNumber,
       serve_placement: finalDraft.serve_placement,
       serve_result: finalDraft.serve_result,
       rally_length: finalDraft.rally_length,
@@ -138,7 +138,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     const { data: point } = await supabase.from('points').insert(pointData).select().single()
     if (point) setLastUndo(point)
 
-    // Update game score
     const winner = finalDraft.point_winner
     const newT1 = game.team1_points + (winner === 'team1' ? 1 : 0)
     const newT2 = game.team2_points + (winner === 'team2' ? 1 : 0)
@@ -153,7 +152,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       .eq('id', game.id)
 
     if (gWinner) {
-      // Update set score
       const newS1 = setData.team1_games + (gWinner === 'team1' ? 1 : 0)
       const newS2 = setData.team2_games + (gWinner === 'team2' ? 1 : 0)
       const sWinner = setWinner(newS1, newS2)
@@ -166,7 +164,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       const newServer = nextServer(server, match.match_type)
 
       if (sWinner) {
-        // Check match winner
         const newT1Sets = t1sets + (sWinner === 'team1' ? 1 : 0)
         const newT2Sets = t2sets + (sWinner === 'team2' ? 1 : 0)
         const setsNeeded = Math.ceil((match.format?.sets ?? 3) / 2)
@@ -181,7 +178,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
           return
         }
 
-        // New set
         const { data: newSet } = await supabase
           .from('sets')
           .insert({ match_id: match.id, set_number: (setData.set_number ?? 0) + 1 })
@@ -197,7 +193,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
           })
         }
       } else {
-        // Check tiebreak
         const isTiebreak = needsTiebreak(newS1, newS2) && match.format?.tiebreak
         const isSuperTiebreak = needsTiebreak(newS1, newS2) && match.format?.superTiebreak &&
           (t1sets + t2sets === (match.format?.sets ?? 3) - 1)
@@ -213,6 +208,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       }
     }
 
+    // Reset for next point
+    setServeNumber(1)
     setSaving(false)
     setDraft(emptyDraft())
     setStep('serve_placement')
@@ -222,12 +219,23 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   async function undoLastPoint() {
     if (!lastUndo) return
     await supabase.from('points').delete().eq('id', lastUndo.id)
-    // Revert game scores
     const prevT1 = game.team1_points - (lastUndo.point_winner === 'team1' ? 1 : 0)
     const prevT2 = game.team2_points - (lastUndo.point_winner === 'team2' ? 1 : 0)
     await supabase.from('games').update({ team1_points: Math.max(0, prevT1), team2_points: Math.max(0, prevT2), winner: null }).eq('id', game.id)
     setLastUndo(null)
     router.refresh()
+  }
+
+  async function endMatch() {
+    setEnding(true)
+    // Determine leader by sets, then games
+    const leader = t1sets > t2sets ? 'team1' : t2sets > t1sets ? 'team2' :
+      setData.team1_games > setData.team2_games ? 'team1' : 'team2'
+    await supabase
+      .from('matches')
+      .update({ status: 'completed', winner: leader, completed_at: new Date().toISOString() })
+      .eq('id', match.id)
+    router.push(`/matches/${match.id}`)
   }
 
   return (
@@ -240,21 +248,47 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               <ArrowLeft className="h-4 w-4" />
             </Link>
             <span className="text-xs font-medium text-zinc-400">Match Log</span>
-            {lastUndo && (
-              <button onClick={undoLastPoint} className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100">
-                <RotateCcw className="h-3.5 w-3.5" />
-                Undo
+            <div className="flex items-center gap-3">
+              {lastUndo && (
+                <button onClick={undoLastPoint} className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100">
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Undo
+                </button>
+              )}
+              <button
+                onClick={() => setShowEndConfirm(true)}
+                className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300"
+              >
+                <StopCircle className="h-3.5 w-3.5" />
+                End
               </button>
-            )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* End match confirmation */}
+      {showEndConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-6 space-y-4">
+            <h2 className="text-base font-semibold">End match early?</h2>
+            <p className="text-sm text-zinc-400">The match will be marked as completed based on the current score.</p>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setShowEndConfirm(false)} disabled={ending}>
+                Cancel
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={endMatch} disabled={ending}>
+                {ending ? 'Ending…' : 'End match'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scoreboard */}
       <div className="mx-auto w-full max-w-md px-4 pt-4">
         <Card className="border-zinc-800">
           <CardContent className="p-4">
-            {/* Set score strip */}
             <div className="mb-3 flex items-center justify-center gap-1.5 text-xs">
               {completedSets.map((s, i) => (
                 <span key={i} className="font-mono text-zinc-500">
@@ -262,33 +296,23 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
                 </span>
               ))}
               {completedSets.length > 0 && <span className="text-zinc-700">·</span>}
-              <Badge variant="serve" className="text-xs">
-                Set {currentSet.set_number}
-              </Badge>
-              <span className="font-mono text-zinc-400">
-                {currentSet.team1_games}-{currentSet.team2_games}
-              </span>
+              <Badge variant="serve" className="text-xs">Set {currentSet.set_number}</Badge>
+              <span className="font-mono text-zinc-400">{currentSet.team1_games}-{currentSet.team2_games}</span>
             </div>
 
-            {/* Current game score */}
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
               <div className="text-right">
                 <div className={`text-xs font-medium ${serverTeam === 'team1' ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                  {p1Name}
-                  {serverTeam === 'team1' && ' ●'}
+                  {p1Name}{serverTeam === 'team1' && ' ●'}
                 </div>
-                <div className="mt-1 font-mono text-5xl font-bold">
-                  {isDeuce ? 'D' : t1label}
-                </div>
+                <div className="mt-1 font-mono text-5xl font-bold">{isDeuce ? 'D' : t1label}</div>
               </div>
               <div className="text-lg text-zinc-600">:</div>
               <div className="text-left">
                 <div className={`text-xs font-medium ${serverTeam === 'team2' ? 'text-yellow-400' : 'text-zinc-400'}`}>
                   {serverTeam === 'team2' && '● '}{p2Name}
                 </div>
-                <div className="mt-1 font-mono text-5xl font-bold">
-                  {isDeuce ? 'D' : t2label}
-                </div>
+                <div className="mt-1 font-mono text-5xl font-bold">{isDeuce ? 'D' : t2label}</div>
               </div>
             </div>
 
@@ -297,7 +321,9 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               <span>·</span>
               <span className="text-yellow-400/80">{servingName} serving</span>
               <span>·</span>
-              <span>{currentServeNumber === 2 ? '2nd serve' : '1st serve'}</span>
+              <span className={serveNumber === 2 ? 'text-orange-400 font-medium' : ''}>
+                {serveNumber === 2 ? '2nd serve' : '1st serve'}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -306,7 +332,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       {/* Step logger */}
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
         <div className="space-y-3">
-          {/* Step back button */}
           {step !== 'serve_placement' && (
             <button onClick={back} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300">
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -318,11 +343,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             step={step}
             draft={draft}
             setDraft={setDraft}
-            serveNumber={currentServeNumber}
+            serveNumber={serveNumber}
             p1Name={p1Name}
             p2Name={p2Name}
             server={server}
             onGo={go}
+            onFault={handleFault}
             onSave={savePoint}
             saving={saving}
           />
@@ -334,7 +360,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
         <div className="mx-auto w-full max-w-md border-t border-zinc-800 px-4 pb-6 pt-4">
           <p className="mb-2 text-xs text-zinc-500">Recent points</p>
           <div className="space-y-1">
-            {[...completedPoints].reverse().slice(0, 5).map((pt, i) => (
+            {[...completedPoints].reverse().slice(0, 5).map((pt) => (
               <MiniPointRow key={pt.id} point={pt} />
             ))}
           </div>
@@ -345,16 +371,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 }
 
 function StepContent({
-  step,
-  draft,
-  setDraft,
-  serveNumber,
-  p1Name,
-  p2Name,
-  server,
-  onGo,
-  onSave,
-  saving,
+  step, draft, setDraft, serveNumber, p1Name, p2Name, server, onGo, onFault, onSave, saving,
 }: {
   step: Step
   draft: PointDraft
@@ -364,6 +381,7 @@ function StepContent({
   p2Name: string
   server: PlayerSlot
   onGo: (step: Step, update: Partial<PointDraft>) => void
+  onFault: () => void
   onSave: (draft: PointDraft) => void
   saving: boolean
 }) {
@@ -371,7 +389,10 @@ function StepContent({
 
   if (step === 'serve_placement') {
     return (
-      <StepCard title={`${serveNumber === 1 ? '1st' : '2nd'} serve — placement`} subtitle={`${serverName} serving`}>
+      <StepCard
+        title={`${serveNumber === 2 ? '2nd' : '1st'} serve — placement`}
+        subtitle={`${serverName} serving`}
+      >
         <Grid3>
           <ChoiceBtn label="Wide" onClick={() => onGo('serve_result', { serve_placement: 'wide' })} />
           <ChoiceBtn label="Body" onClick={() => onGo('serve_result', { serve_placement: 'body' })} />
@@ -382,28 +403,28 @@ function StepContent({
   }
 
   if (step === 'serve_result') {
+    const isSecond = serveNumber === 2
     return (
-      <StepCard title="Serve result">
+      <StepCard title={`${isSecond ? '2nd' : '1st'} serve result`}>
         <Grid2>
           <ChoiceBtn
             label="Ace"
             accent="green"
             onClick={() => {
-              const d = { ...draft, serve_result: 'ace' as ServeResult, outcome: 'ace' as PointOutcome, point_winner: (teamOfPlayer(server)) as Team, rally_length: 1, last_shot_type: 'serve' as ShotType }
+              const d = { ...draft, serve_result: 'ace' as ServeResult, outcome: 'ace' as PointOutcome, point_winner: teamOfPlayer(server) as Team, rally_length: 1, last_shot_type: 'serve' as ShotType }
               onSave(d)
             }}
           />
           <ChoiceBtn
-            label="Fault"
+            label={isSecond ? 'Double fault' : 'Fault'}
             accent="red"
             onClick={() => {
-              if (serveNumber === 2) {
-                // Double fault
+              if (isSecond) {
                 const otherTeam: Team = teamOfPlayer(server) === 'team1' ? 'team2' : 'team1'
                 const d = { ...draft, serve_result: 'double_fault' as ServeResult, outcome: 'double_fault' as PointOutcome, point_winner: otherTeam, rally_length: 0, last_shot_type: 'serve' as ShotType }
                 onSave(d)
               } else {
-                onGo('serve_placement', { serve_result: 'fault', serve_number: 2 })
+                onFault()
               }
             }}
           />
@@ -418,21 +439,10 @@ function StepContent({
       <StepCard title="How did the point end?">
         <div className="space-y-2">
           <Grid2>
-            <ChoiceBtn
-              label="Winner"
-              accent="green"
-              onClick={() => onGo('shot_type', { outcome: 'winner' })}
-            />
-            <ChoiceBtn
-              label="Unforced error"
-              accent="red"
-              onClick={() => onGo('shot_type', { outcome: 'unforced_error' })}
-            />
+            <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('shot_type', { outcome: 'winner' })} />
+            <ChoiceBtn label="Unforced error" accent="red" onClick={() => onGo('shot_type', { outcome: 'unforced_error' })} />
           </Grid2>
-          <ChoiceBtn
-            label="Forced error"
-            onClick={() => onGo('shot_type', { outcome: 'error' })}
-          />
+          <ChoiceBtn label="Forced error" onClick={() => onGo('shot_type', { outcome: 'error' })} />
         </div>
       </StepCard>
     )
@@ -440,18 +450,19 @@ function StepContent({
 
   if (step === 'shot_type') {
     const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+    const next = isError ? 'error_direction' : 'point_winner'
     return (
       <StepCard title="Last shot">
         <div className="space-y-2">
           <Grid2>
-            <ChoiceBtn label="Forehand" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'forehand' })} />
-            <ChoiceBtn label="Backhand" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'backhand' })} />
-            <ChoiceBtn label="FH Volley" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'forehand_volley' })} />
-            <ChoiceBtn label="BH Volley" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'backhand_volley' })} />
-            <ChoiceBtn label="Overhead" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'overhead' })} />
-            <ChoiceBtn label="Lob" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'lob' })} />
+            <ChoiceBtn label="Forehand" onClick={() => onGo(next, { last_shot_type: 'forehand' })} />
+            <ChoiceBtn label="Backhand" onClick={() => onGo(next, { last_shot_type: 'backhand' })} />
+            <ChoiceBtn label="FH Volley" onClick={() => onGo(next, { last_shot_type: 'forehand_volley' })} />
+            <ChoiceBtn label="BH Volley" onClick={() => onGo(next, { last_shot_type: 'backhand_volley' })} />
+            <ChoiceBtn label="Overhead" onClick={() => onGo(next, { last_shot_type: 'overhead' })} />
+            <ChoiceBtn label="Lob" onClick={() => onGo(next, { last_shot_type: 'lob' })} />
           </Grid2>
-          <ChoiceBtn label="Drop shot" onClick={() => onGo(isError ? 'error_direction' : 'point_winner', { last_shot_type: 'drop_shot' })} />
+          <ChoiceBtn label="Drop shot" onClick={() => onGo(next, { last_shot_type: 'drop_shot' })} />
         </div>
       </StepCard>
     )
@@ -470,8 +481,6 @@ function StepContent({
   }
 
   if (step === 'point_winner') {
-    // For errors, the winner is the player who didn't make the error
-    // For winners, it's the player who hit the winner
     return (
       <StepCard title={draft.outcome === 'winner' ? 'Who hit it?' : 'Who made the error?'}>
         <div className="space-y-3">
@@ -480,36 +489,29 @@ function StepContent({
               label={p1Name}
               onClick={() => {
                 const pointWinner: Team = draft.outcome === 'winner' ? 'team1' : 'team2'
-                const d = { ...draft, point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot }
-                onGo('confirm', d)
+                onGo('confirm', { ...draft, point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot })
               }}
             />
             <ChoiceBtn
               label={p2Name}
               onClick={() => {
                 const pointWinner: Team = draft.outcome === 'winner' ? 'team2' : 'team1'
-                const d = { ...draft, point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot }
-                onGo('confirm', d)
+                onGo('confirm', { ...draft, point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot })
               }}
             />
           </Grid2>
-          {/* Rally counter */}
           <div className="rounded-md border border-zinc-800 p-3">
             <p className="mb-2 text-center text-xs text-zinc-500">Rally length (strokes)</p>
             <div className="flex items-center justify-center gap-4">
               <button
                 onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))}
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-              >
-                −
-              </button>
+              >−</button>
               <span className="w-8 text-center text-xl font-bold">{draft.rally_length}</span>
               <button
                 onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))}
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-              >
-                +
-              </button>
+              >+</button>
             </div>
           </div>
         </div>
@@ -518,23 +520,8 @@ function StepContent({
   }
 
   if (step === 'confirm') {
-    const outcomeMap: Record<string, string> = {
-      winner: 'Winner',
-      error: 'Forced Error',
-      unforced_error: 'Unforced Error',
-      ace: 'Ace',
-      double_fault: 'Double Fault',
-    }
-    const shotMap: Record<string, string> = {
-      forehand: 'Forehand',
-      backhand: 'Backhand',
-      forehand_volley: 'FH Volley',
-      backhand_volley: 'BH Volley',
-      overhead: 'Overhead',
-      lob: 'Lob',
-      drop_shot: 'Drop shot',
-      serve: 'Serve',
-    }
+    const outcomeMap: Record<string, string> = { winner: 'Winner', error: 'Forced Error', unforced_error: 'Unforced Error', ace: 'Ace', double_fault: 'Double Fault' }
+    const shotMap: Record<string, string> = { forehand: 'Forehand', backhand: 'Backhand', forehand_volley: 'FH Volley', backhand_volley: 'BH Volley', overhead: 'Overhead', lob: 'Lob', drop_shot: 'Drop shot', serve: 'Serve' }
     const winnerName = draft.point_winner === 'team1' ? p1Name : p2Name
 
     return (
@@ -547,12 +534,7 @@ function StepContent({
           <Row label="Rally" value={`${draft.rally_length} shots`} />
           <Row label="Point to" value={winnerName} highlight />
         </div>
-        <Button
-          className="mt-3 w-full"
-          size="lg"
-          onClick={() => onSave(draft)}
-          disabled={saving}
-        >
+        <Button className="mt-3 w-full" size="lg" onClick={() => onSave(draft)} disabled={saving}>
           {saving ? 'Saving…' : 'Log point'}
         </Button>
       </StepCard>
@@ -561,7 +543,6 @@ function StepContent({
 
   return null
 }
-
 
 function StepCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -582,17 +563,7 @@ function Grid3({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-3 gap-2">{children}</div>
 }
 
-function ChoiceBtn({
-  label,
-  onClick,
-  accent,
-  className,
-}: {
-  label: string
-  onClick: () => void
-  accent?: 'green' | 'red'
-  className?: string
-}) {
+function ChoiceBtn({ label, onClick, accent, className }: { label: string; onClick: () => void; accent?: 'green' | 'red'; className?: string }) {
   const base = 'rounded-lg border py-4 text-sm font-medium transition-colors active:scale-95'
   const colors = accent === 'green'
     ? 'border-emerald-700/50 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50'
@@ -616,30 +587,9 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
 }
 
 function MiniPointRow({ point }: { point: Point }) {
-  const outcomeColors: Record<string, string> = {
-    ace: 'text-emerald-400',
-    winner: 'text-emerald-400',
-    error: 'text-red-400',
-    unforced_error: 'text-red-400',
-    double_fault: 'text-red-400',
-  }
-  const shortOutcome: Record<string, string> = {
-    ace: 'Ace',
-    winner: 'W',
-    error: 'E',
-    unforced_error: 'UE',
-    double_fault: 'DF',
-  }
-  const shortShot: Record<string, string> = {
-    forehand: 'FH',
-    backhand: 'BH',
-    forehand_volley: 'FH Vol',
-    backhand_volley: 'BH Vol',
-    overhead: 'OH',
-    lob: 'Lob',
-    drop_shot: 'Drop',
-    serve: 'Srv',
-  }
+  const outcomeColors: Record<string, string> = { ace: 'text-emerald-400', winner: 'text-emerald-400', error: 'text-red-400', unforced_error: 'text-red-400', double_fault: 'text-red-400' }
+  const shortOutcome: Record<string, string> = { ace: 'Ace', winner: 'W', error: 'E', unforced_error: 'UE', double_fault: 'DF' }
+  const shortShot: Record<string, string> = { forehand: 'FH', backhand: 'BH', forehand_volley: 'FH Vol', backhand_volley: 'BH Vol', overhead: 'OH', lob: 'Lob', drop_shot: 'Drop', serve: 'Srv' }
   return (
     <div className="flex items-center gap-2 text-xs text-zinc-500">
       <span className={outcomeColors[point.outcome ?? ''] ?? 'text-zinc-400'}>

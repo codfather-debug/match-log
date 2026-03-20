@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus, X } from 'lucide-react'
 import Link from 'next/link'
 import type { Player } from '@/types/tennis'
 
@@ -26,16 +26,45 @@ export default function NewMatchPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
+  // Inline add player
+  const [showAddPlayer, setShowAddPlayer] = useState(false)
+  const [newPlayerName, setNewPlayerName] = useState('')
+  const [addingPlayer, setAddingPlayer] = useState(false)
+  const [addPlayerError, setAddPlayerError] = useState('')
+
+  async function loadPlayers() {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        supabase.from('players').select('*').eq('user_id', user.id).order('name').then(({ data }) => {
-          setPlayers(data ?? [])
-        })
-      }
-    })
-  }, [])
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data } = await supabase.from('players').select('*').eq('user_id', user.id).order('name')
+      setPlayers(data ?? [])
+    }
+  }
+
+  useEffect(() => { loadPlayers() }, [])
+
+  async function handleAddPlayer(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newPlayerName.trim()) return
+    setAddingPlayer(true)
+    setAddPlayerError('')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data, error } = await supabase
+      .from('players')
+      .insert({ user_id: user!.id, name: newPlayerName.trim() })
+      .select()
+      .single()
+    if (error) {
+      setAddPlayerError(error.message)
+      setAddingPlayer(false)
+      return
+    }
+    setPlayers((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    setNewPlayerName('')
+    setShowAddPlayer(false)
+    setAddingPlayer(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -70,7 +99,6 @@ export default function NewMatchPage() {
       return
     }
 
-    // Create first set and first game
     const { data: set } = await supabase
       .from('sets')
       .insert({ match_id: match.id, set_number: 1 })
@@ -102,15 +130,6 @@ export default function NewMatchPage() {
         <h1 className="text-xl font-semibold">New match</h1>
       </div>
 
-      {players.length < 2 && (
-        <Card>
-          <CardContent className="py-4 text-sm text-zinc-400">
-            You need at least 2 players.{' '}
-            <Link href="/players/new" className="text-zinc-100 underline">Add players first.</Link>
-          </CardContent>
-        </Card>
-      )}
-
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Match type */}
         <div className="space-y-1.5">
@@ -135,8 +154,36 @@ export default function NewMatchPage() {
 
         {/* Players */}
         <div className="space-y-3">
-          <Label>Players</Label>
-          <div className={`grid gap-3 ${matchType === 'doubles' ? 'grid-cols-2' : 'grid-cols-2'}`}>
+          <div className="flex items-center justify-between">
+            <Label>Players</Label>
+            <button
+              type="button"
+              onClick={() => setShowAddPlayer((v) => !v)}
+              className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100"
+            >
+              {showAddPlayer ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+              {showAddPlayer ? 'Cancel' : 'Add player'}
+            </button>
+          </div>
+
+          {/* Inline add player form */}
+          {showAddPlayer && (
+            <form onSubmit={handleAddPlayer} className="flex gap-2 rounded-md border border-zinc-700 bg-zinc-900/50 p-3">
+              <Input
+                placeholder="Player name"
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                className="flex-1"
+                autoFocus
+              />
+              <Button type="submit" size="sm" disabled={addingPlayer || !newPlayerName.trim()}>
+                {addingPlayer ? '…' : 'Add'}
+              </Button>
+            </form>
+          )}
+          {addPlayerError && <p className="text-xs text-red-400">{addPlayerError}</p>}
+
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <p className="text-xs text-zinc-500">{matchType === 'doubles' ? 'Team 1 · Player A' : 'Player 1'}</p>
               <Select value={player1} onValueChange={setPlayer1}>
