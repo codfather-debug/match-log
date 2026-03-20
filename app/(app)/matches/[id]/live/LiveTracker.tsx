@@ -567,18 +567,19 @@ function ServeCourtDiagram({
 }) {
   // Zone order left→right from server's perspective
   // Deuce side: T (left/center), Body (mid), Wide (right/sideline)
-  // Ad side: Wide (left/sideline), Body (mid), T (right/center)
+  // Deuce: Wide (left/sideline) | Body | T (right/center)
+  // Ad:    T (left/center) | Body | Wide (right/sideline)
   const zones: { label: string; sub: string; value: ServePlacement }[] =
     courtSide === 'deuce'
       ? [
-          { label: 'T', sub: 'Center', value: 'T' },
-          { label: 'Body', sub: 'Middle', value: 'body' },
           { label: 'Wide', sub: 'Sideline', value: 'wide' },
+          { label: 'Body', sub: 'Middle', value: 'body' },
+          { label: 'T', sub: 'Center', value: 'T' },
         ]
       : [
-          { label: 'Wide', sub: 'Sideline', value: 'wide' },
-          { label: 'Body', sub: 'Middle', value: 'body' },
           { label: 'T', sub: 'Center', value: 'T' },
+          { label: 'Body', sub: 'Middle', value: 'body' },
+          { label: 'Wide', sub: 'Sideline', value: 'wide' },
         ]
 
   return (
