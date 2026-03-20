@@ -27,6 +27,7 @@ import type {
   PlayerSlot,
   Team,
   ServeNumber,
+  ServePlacement,
   ServeResult,
   PointOutcome,
   ShotType,
@@ -56,7 +57,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 
   const [draft, setDraft] = useState<PointDraft>(emptyDraft())
   const [step, setStep] = useState<Step>('serve_placement')
-  // Track serve number in state so 2nd serve shows correctly within a point flow
   const [serveNumber, setServeNumber] = useState<ServeNumber>(1)
   const [saving, setSaving] = useState(false)
   const [lastUndo, setLastUndo] = useState<Point | null>(null)
@@ -93,7 +93,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const isDeuce = !isTB && isDeuceGame(t1g, t2g) && t1g === t2g
 
   const totalPts = t1g + t2g
-  const courtSide = totalPts % 2 === 0 ? 'Deuce' : 'Ad'
+  const courtSide: 'deuce' | 'ad' = totalPts % 2 === 0 ? 'deuce' : 'ad'
 
   function go(nextStep: Step, update: Partial<PointDraft>) {
     setDraft((d) => ({ ...d, ...update }))
@@ -101,7 +101,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function handleFault() {
-    // On fault during 1st serve: switch to 2nd serve and go back to placement
     setServeNumber(2)
     setDraft((d) => ({ ...d, serve_result: 'fault' }))
     setStep('serve_placement')
@@ -131,7 +130,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       last_shot_type: finalDraft.last_shot_type,
       last_shot_player: finalDraft.last_shot_player,
       error_direction: finalDraft.error_direction,
-      court_side: courtSide.toLowerCase(),
+      court_side: courtSide,
       score_before: { team1: t1label, team2: t2label },
     }
 
@@ -196,7 +195,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
         const isTiebreak = needsTiebreak(newS1, newS2) && match.format?.tiebreak
         const isSuperTiebreak = needsTiebreak(newS1, newS2) && match.format?.superTiebreak &&
           (t1sets + t2sets === (match.format?.sets ?? 3) - 1)
-
         const gamesInSet = setData.games?.filter((g) => g.winner).length ?? 0
         await supabase.from('games').insert({
           set_id: setData.id,
@@ -208,7 +206,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       }
     }
 
-    // Reset for next point
     setServeNumber(1)
     setSaving(false)
     setDraft(emptyDraft())
@@ -228,7 +225,6 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 
   async function endMatch() {
     setEnding(true)
-    // Determine leader by sets, then games
     const leader = t1sets > t2sets ? 'team1' : t2sets > t1sets ? 'team2' :
       setData.team1_games > setData.team2_games ? 'team1' : 'team2'
     await supabase
@@ -255,10 +251,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
                   Undo
                 </button>
               )}
-              <button
-                onClick={() => setShowEndConfirm(true)}
-                className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300"
-              >
+              <button onClick={() => setShowEndConfirm(true)} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300">
                 <StopCircle className="h-3.5 w-3.5" />
                 End
               </button>
@@ -274,12 +267,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             <h2 className="text-base font-semibold">End match early?</h2>
             <p className="text-sm text-zinc-400">The match will be marked as completed based on the current score.</p>
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setShowEndConfirm(false)} disabled={ending}>
-                Cancel
-              </Button>
-              <Button variant="destructive" className="flex-1" onClick={endMatch} disabled={ending}>
-                {ending ? 'Ending…' : 'End match'}
-              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setShowEndConfirm(false)} disabled={ending}>Cancel</Button>
+              <Button variant="destructive" className="flex-1" onClick={endMatch} disabled={ending}>{ending ? 'Ending…' : 'End match'}</Button>
             </div>
           </div>
         </div>
@@ -291,9 +280,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
           <CardContent className="p-4">
             <div className="mb-3 flex items-center justify-center gap-1.5 text-xs">
               {completedSets.map((s, i) => (
-                <span key={i} className="font-mono text-zinc-500">
-                  {s.team1_games}-{s.team2_games}
-                </span>
+                <span key={i} className="font-mono text-zinc-500">{s.team1_games}-{s.team2_games}</span>
               ))}
               {completedSets.length > 0 && <span className="text-zinc-700">·</span>}
               <Badge variant="serve" className="text-xs">Set {currentSet.set_number}</Badge>
@@ -317,14 +304,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             </div>
 
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-zinc-500">
-              <span>{courtSide} side</span>
+              <span className="capitalize">{courtSide} side</span>
               <span>·</span>
               <span className="text-yellow-400/80">{servingName} serving</span>
               <span>·</span>
               {serveNumber === 2 ? (
-                <span className="rounded bg-orange-500/20 px-1.5 py-0.5 font-semibold text-orange-400 border border-orange-500/40">
-                  2nd serve
-                </span>
+                <span className="rounded bg-orange-500/20 px-1.5 py-0.5 font-semibold text-orange-400 border border-orange-500/40">2nd serve</span>
               ) : (
                 <span>1st serve</span>
               )}
@@ -348,6 +333,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             draft={draft}
             setDraft={setDraft}
             serveNumber={serveNumber}
+            setServeNumber={setServeNumber}
+            courtSide={courtSide}
             p1Name={p1Name}
             p2Name={p2Name}
             server={server}
@@ -375,12 +362,14 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 }
 
 function StepContent({
-  step, draft, setDraft, serveNumber, p1Name, p2Name, server, onGo, onFault, onSave, saving,
+  step, draft, setDraft, serveNumber, setServeNumber, courtSide, p1Name, p2Name, server, onGo, onFault, onSave, saving,
 }: {
   step: Step
   draft: PointDraft
   setDraft: React.Dispatch<React.SetStateAction<PointDraft>>
   serveNumber: ServeNumber
+  setServeNumber: React.Dispatch<React.SetStateAction<ServeNumber>>
+  courtSide: 'deuce' | 'ad'
   p1Name: string
   p2Name: string
   server: PlayerSlot
@@ -390,29 +379,47 @@ function StepContent({
   saving: boolean
 }) {
   const serverName = teamOfPlayer(server) === 'team1' ? p1Name : p2Name
+  const isSecond = serveNumber === 2
 
   if (step === 'serve_placement') {
     return (
-      <StepCard
-        title={`${serveNumber === 2 ? '2nd' : '1st'} serve — placement`}
-        subtitle={`${serverName} serving`}
-      >
-        <Grid3>
-          <ChoiceBtn label="Wide" onClick={() => onGo('serve_result', { serve_placement: 'wide' })} />
-          <ChoiceBtn label="Body" onClick={() => onGo('serve_result', { serve_placement: 'body' })} />
-          <ChoiceBtn label="T (center)" onClick={() => onGo('serve_result', { serve_placement: 'T' })} />
-        </Grid3>
-      </StepCard>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-zinc-200">{serverName} serving</p>
+          {/* 1st / 2nd toggle */}
+          <div className="flex rounded-md border border-zinc-700 overflow-hidden text-xs">
+            <button
+              type="button"
+              onClick={() => setServeNumber(1)}
+              className={`px-3 py-1.5 transition-colors ${!isSecond ? 'bg-white text-black font-semibold' : 'text-zinc-400 hover:bg-zinc-800'}`}
+            >
+              1st
+            </button>
+            <button
+              type="button"
+              onClick={() => setServeNumber(2)}
+              className={`px-3 py-1.5 transition-colors ${isSecond ? 'bg-orange-500 text-white font-semibold' : 'text-zinc-400 hover:bg-zinc-800'}`}
+            >
+              2nd
+            </button>
+          </div>
+        </div>
+
+        {/* Court diagram */}
+        <ServeCourtDiagram
+          courtSide={courtSide}
+          onSelect={(placement) => onGo('serve_result', { serve_placement: placement })}
+        />
+      </div>
     )
   }
 
   if (step === 'serve_result') {
-    const isSecond = serveNumber === 2
     return (
       <StepCard title={`${isSecond ? '2nd' : '1st'} serve result`}>
         <Grid2>
           <ChoiceBtn
-            label="Ace"
+            label="Ace ★"
             accent="green"
             onClick={() => {
               const d = { ...draft, serve_result: 'ace' as ServeResult, outcome: 'ace' as PointOutcome, point_winner: teamOfPlayer(server) as Team, rally_length: 1, last_shot_type: 'serve' as ShotType }
@@ -432,7 +439,7 @@ function StepContent({
               }
             }}
           />
-          <ChoiceBtn label="In play" onClick={() => onGo('outcome', { serve_result: 'in_play' })} className="col-span-2" />
+          <ChoiceBtn label="In play →" onClick={() => onGo('outcome', { serve_result: 'in_play' })} className="col-span-2" />
         </Grid2>
       </StepCard>
     )
@@ -486,7 +493,7 @@ function StepContent({
 
   if (step === 'point_winner') {
     return (
-      <StepCard title={draft.outcome === 'winner' ? 'Who hit it?' : 'Who made the error?'}>
+      <StepCard title={draft.outcome === 'winner' ? 'Who hit the winner?' : 'Who made the error?'}>
         <div className="space-y-3">
           <Grid2>
             <ChoiceBtn
@@ -507,15 +514,9 @@ function StepContent({
           <div className="rounded-md border border-zinc-800 p-3">
             <p className="mb-2 text-center text-xs text-zinc-500">Rally length (strokes)</p>
             <div className="flex items-center justify-center gap-4">
-              <button
-                onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-              >−</button>
+              <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
               <span className="w-8 text-center text-xl font-bold">{draft.rally_length}</span>
-              <button
-                onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-              >+</button>
+              <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
             </div>
           </div>
         </div>
@@ -531,7 +532,7 @@ function StepContent({
     return (
       <StepCard title="Confirm point">
         <div className="space-y-2 rounded-md bg-zinc-800/50 p-4 text-sm">
-          {draft.serve_placement && <Row label="Serve" value={draft.serve_placement} />}
+          {draft.serve_placement && <Row label="Serve" value={`${serveNumber === 2 ? '2nd · ' : ''}${draft.serve_placement}`} />}
           {draft.outcome && <Row label="Outcome" value={outcomeMap[draft.outcome] ?? draft.outcome} />}
           {draft.last_shot_type && <Row label="Shot" value={shotMap[draft.last_shot_type] ?? draft.last_shot_type} />}
           {draft.error_direction && <Row label="Error" value={draft.error_direction} />}
@@ -547,6 +548,77 @@ function StepContent({
 
   return null
 }
+
+// ─── Court diagram ───────────────────────────────────────────────────────────
+
+function ServeCourtDiagram({
+  courtSide,
+  onSelect,
+}: {
+  courtSide: 'deuce' | 'ad'
+  onSelect: (p: ServePlacement) => void
+}) {
+  // Zone order left→right from server's perspective
+  // Deuce side: T (left/center), Body (mid), Wide (right/sideline)
+  // Ad side: Wide (left/sideline), Body (mid), T (right/center)
+  const zones: { label: string; sub: string; value: ServePlacement }[] =
+    courtSide === 'deuce'
+      ? [
+          { label: 'T', sub: 'Center', value: 'T' },
+          { label: 'Body', sub: 'Middle', value: 'body' },
+          { label: 'Wide', sub: 'Sideline', value: 'wide' },
+        ]
+      : [
+          { label: 'Wide', sub: 'Sideline', value: 'wide' },
+          { label: 'Body', sub: 'Middle', value: 'body' },
+          { label: 'T', sub: 'Center', value: 'T' },
+        ]
+
+  return (
+    <div className="space-y-1.5">
+      {/* Net bar */}
+      <div className="flex items-center gap-1.5">
+        <div className="h-px flex-1 bg-zinc-600" />
+        <span className="text-xs text-zinc-500">NET</span>
+        <div className="h-px flex-1 bg-zinc-600" />
+      </div>
+
+      {/* Service box */}
+      <div className="relative overflow-hidden rounded-lg border border-zinc-700 bg-emerald-950/60">
+        {/* Court lines */}
+        <div className="absolute inset-0 flex">
+          <div className="flex-1 border-r border-white/20" />
+          <div className="flex-1 border-r border-white/20" />
+          <div className="flex-1" />
+        </div>
+
+        {/* Tap zones */}
+        <div className="relative grid grid-cols-3">
+          {zones.map((z) => (
+            <button
+              key={z.value}
+              type="button"
+              onClick={() => onSelect(z.value)}
+              className="group flex flex-col items-center justify-center py-8 transition-colors hover:bg-white/10 active:bg-white/20"
+            >
+              <span className="text-base font-bold text-white">{z.label}</span>
+              <span className="text-xs text-emerald-300/60">{z.sub}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Server label */}
+      <div className="flex items-center gap-1.5">
+        <div className="h-px flex-1 bg-zinc-800" />
+        <span className="text-xs text-zinc-600">SERVER</span>
+        <div className="h-px flex-1 bg-zinc-800" />
+      </div>
+    </div>
+  )
+}
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function StepCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -574,11 +646,7 @@ function ChoiceBtn({ label, onClick, accent, className }: { label: string; onCli
     : accent === 'red'
     ? 'border-red-700/50 bg-red-900/30 text-red-300 hover:bg-red-900/50'
     : 'border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-  return (
-    <button onClick={onClick} className={`${base} ${colors} ${className ?? ''}`}>
-      {label}
-    </button>
-  )
+  return <button onClick={onClick} className={`${base} ${colors} ${className ?? ''}`}>{label}</button>
 }
 
 function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
@@ -596,9 +664,7 @@ function MiniPointRow({ point }: { point: Point }) {
   const shortShot: Record<string, string> = { forehand: 'FH', backhand: 'BH', forehand_volley: 'FH Vol', backhand_volley: 'BH Vol', overhead: 'OH', lob: 'Lob', drop_shot: 'Drop', serve: 'Srv' }
   return (
     <div className="flex items-center gap-2 text-xs text-zinc-500">
-      <span className={outcomeColors[point.outcome ?? ''] ?? 'text-zinc-400'}>
-        {shortOutcome[point.outcome ?? ''] ?? '?'}
-      </span>
+      <span className={outcomeColors[point.outcome ?? ''] ?? 'text-zinc-400'}>{shortOutcome[point.outcome ?? ''] ?? '?'}</span>
       {point.last_shot_type && <span>{shortShot[point.last_shot_type] ?? ''}</span>}
       {point.error_direction && <span>· {point.error_direction}</span>}
       <span className="ml-auto">{point.rally_length}x</span>

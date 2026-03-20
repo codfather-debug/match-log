@@ -114,6 +114,22 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         </CardContent>
       </Card>
 
+      {/* Tug of war chart */}
+      {allPoints.length > 1 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Point flow</CardTitle>
+            <div className="flex items-center gap-4 text-xs text-zinc-500">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-400 inline-block" />{p1}</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-400 inline-block" />{p2}</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <TugOfWarChart points={allPoints} p1Name={p1} p2Name={p2} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats */}
       <Card>
         <CardHeader className="pb-3">
@@ -145,6 +161,87 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function TugOfWarChart({ points, p1Name, p2Name }: { points: Point[]; p1Name: string; p2Name: string }) {
+  const W = 320
+  const H = 100
+  const pad = 8
+
+  // Build cumulative momentum: +1 for team1, -1 for team2
+  const values: number[] = [0]
+  for (const pt of points) {
+    const last = values[values.length - 1]
+    values.push(last + (pt.point_winner === 'team1' ? 1 : -1))
+  }
+
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = Math.max(max - min, 1)
+
+  const xStep = (W - pad * 2) / Math.max(values.length - 1, 1)
+  const toY = (v: number) => pad + ((max - v) / range) * (H - pad * 2)
+  const midY = toY(0)
+
+  const pts = values.map((v, i) => `${pad + i * xStep},${toY(v)}`).join(' ')
+
+  return (
+    <div className="w-full overflow-hidden">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+        {/* Zero line */}
+        <line x1={pad} y1={midY} x2={W - pad} y2={midY} stroke="#3f3f46" strokeWidth="1" strokeDasharray="4,3" />
+
+        {/* Fill above zero (team1 leading) */}
+        <polyline
+          points={`${pad},${midY} ${pts} ${pad + (values.length - 1) * xStep},${midY}`}
+          fill="rgba(96,165,250,0.15)"
+          stroke="none"
+        />
+
+        {/* Fill below zero (team2 leading) */}
+        <polyline
+          points={`${pad},${midY} ${pts} ${pad + (values.length - 1) * xStep},${midY}`}
+          fill="rgba(251,113,133,0.15)"
+          stroke="none"
+        />
+
+        {/* Main line */}
+        <polyline points={pts} fill="none" stroke="#a1a1aa" strokeWidth="1.5" strokeLinejoin="round" />
+
+        {/* Colored segments */}
+        {values.slice(0, -1).map((v, i) => {
+          const x1 = pad + i * xStep
+          const x2 = pad + (i + 1) * xStep
+          const y1 = toY(v)
+          const y2 = toY(values[i + 1])
+          const winner = points[i]?.point_winner
+          return (
+            <line
+              key={i}
+              x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke={winner === 'team1' ? '#60a5fa' : '#fb7185'}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          )
+        })}
+
+        {/* Current position dot */}
+        <circle
+          cx={pad + (values.length - 1) * xStep}
+          cy={toY(values[values.length - 1])}
+          r="3"
+          fill={values[values.length - 1] >= 0 ? '#60a5fa' : '#fb7185'}
+        />
+      </svg>
+
+      {/* Labels */}
+      <div className="flex justify-between text-xs text-zinc-600 px-1">
+        <span className="text-blue-400">{p1Name} leading ↑</span>
+        <span className="text-rose-400">↓ {p2Name} leading</span>
+      </div>
     </div>
   )
 }

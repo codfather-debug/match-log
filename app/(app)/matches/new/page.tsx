@@ -29,6 +29,7 @@ export default function NewMatchPage() {
   // Inline add player
   const [showAddPlayer, setShowAddPlayer] = useState(false)
   const [newPlayerName, setNewPlayerName] = useState('')
+  const [newPlayerHand, setNewPlayerHand] = useState<'right' | 'left' | ''>('')
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [addPlayerError, setAddPlayerError] = useState('')
 
@@ -52,7 +53,7 @@ export default function NewMatchPage() {
     const { data: { user } } = await supabase.auth.getUser()
     const { data, error } = await supabase
       .from('players')
-      .insert({ user_id: user!.id, name: newPlayerName.trim() })
+      .insert({ user_id: user!.id, name: newPlayerName.trim(), handedness: newPlayerHand || null })
       .select()
       .single()
     if (error) {
@@ -62,6 +63,7 @@ export default function NewMatchPage() {
     }
     setPlayers((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     setNewPlayerName('')
+    setNewPlayerHand('')
     setShowAddPlayer(false)
     setAddingPlayer(false)
   }
@@ -158,21 +160,38 @@ export default function NewMatchPage() {
 
           {/* Inline add player — div to avoid nested form */}
           {showAddPlayer ? (
-            <div className="flex gap-2 rounded-md border border-zinc-700 bg-zinc-900/50 p-3">
+            <div className="rounded-md border border-zinc-700 bg-zinc-900/50 p-3 space-y-2">
               <Input
                 placeholder="Player name"
                 value={newPlayerName}
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddPlayer(e as unknown as React.FormEvent) } }}
-                className="flex-1"
                 autoFocus
               />
-              <Button type="button" size="sm" disabled={addingPlayer || !newPlayerName.trim()} onClick={(e) => handleAddPlayer(e as unknown as React.FormEvent)}>
-                {addingPlayer ? '…' : 'Add'}
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setShowAddPlayer(false)}>
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-2">
+                {(['right', 'left', ''] as const).map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setNewPlayerHand(h)}
+                    className={`flex-1 rounded border py-1.5 text-xs transition-colors ${
+                      newPlayerHand === h
+                        ? 'border-zinc-100 bg-zinc-700 text-zinc-100'
+                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                    }`}
+                  >
+                    {h === '' ? 'Unknown' : h === 'right' ? 'Right-handed' : 'Left-handed'}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" disabled={addingPlayer || !newPlayerName.trim()} onClick={(e) => handleAddPlayer(e as unknown as React.FormEvent)} className="flex-1">
+                  {addingPlayer ? '…' : 'Add player'}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setShowAddPlayer(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ) : (
             <button
