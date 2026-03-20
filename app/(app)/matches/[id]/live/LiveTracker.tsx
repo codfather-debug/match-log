@@ -502,30 +502,43 @@ function StepContent({
     return (
       <StepCard title={draft.outcome === 'winner' ? 'Who hit the winner?' : 'Who made the error?'}>
         <div className="space-y-3">
+          <div className="rounded-md border border-zinc-800 p-3 space-y-2">
+            <p className="text-center text-xs text-zinc-500">Rally length (strokes)</p>
+            <div className="grid grid-cols-5 gap-1.5">
+              {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setDraft((d) => ({ ...d, rally_length: n }))}
+                  className={`rounded-md border py-2 text-sm font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center justify-center gap-4 pt-1">
+              <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
+              <span className="w-8 text-center text-lg font-bold">{draft.rally_length}</span>
+              <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
+            </div>
+          </div>
           <Grid2>
             <ChoiceBtn
               label={p1Name}
+              accent="green"
               onClick={() => {
                 const pointWinner: Team = draft.outcome === 'winner' ? 'team1' : 'team2'
-                onGo('confirm', { ...draft, point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot })
+                onSave({ ...draft, point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot })
               }}
             />
             <ChoiceBtn
               label={p2Name}
+              accent="green"
               onClick={() => {
                 const pointWinner: Team = draft.outcome === 'winner' ? 'team2' : 'team1'
-                onGo('confirm', { ...draft, point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot })
+                onSave({ ...draft, point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot })
               }}
             />
           </Grid2>
-          <div className="rounded-md border border-zinc-800 p-3">
-            <p className="mb-2 text-center text-xs text-zinc-500">Rally length (strokes)</p>
-            <div className="flex items-center justify-center gap-4">
-              <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
-              <span className="w-8 text-center text-xl font-bold">{draft.rally_length}</span>
-              <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
-            </div>
-          </div>
         </div>
       </StepCard>
     )
