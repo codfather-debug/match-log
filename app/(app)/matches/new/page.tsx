@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,8 @@ export default function NewMatchPage() {
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [addPlayerError, setAddPlayerError] = useState('')
 
+  const opponentsFilled = useRef(false)
+
   async function loadPlayers() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -42,7 +44,32 @@ export default function NewMatchPage() {
     }
   }
 
+  async function fillOpponents(currentPlayers: Player[]) {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    let list = [...currentPlayers]
+    for (const name of ['Opponent 1', 'Opponent 2']) {
+      if (!list.find(p => p.name === name)) {
+        const { data } = await supabase.from('players').insert({ user_id: user.id, name }).select().single()
+        if (data) list = [...list, data]
+      }
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name))
+    setPlayers(list)
+    const opp1 = list.find(p => p.name === 'Opponent 1')
+    const opp2 = list.find(p => p.name === 'Opponent 2')
+    if (opp1) setPlayer2(opp1.id)
+    if (opp2) setPlayer4(opp2.id)
+  }
+
   useEffect(() => { loadPlayers() }, [])
+
+  useEffect(() => {
+    if (matchType !== 'doubles' || opponentsFilled.current || players.length === 0) return
+    opponentsFilled.current = true
+    fillOpponents(players)
+  }, [matchType, players.length])
 
   async function handleAddPlayer(e: React.FormEvent) {
     e.preventDefault()

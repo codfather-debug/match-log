@@ -76,9 +76,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 
   const p1Name = match.player1?.name ?? 'P1'
   const p2Name = match.player2?.name ?? 'P2'
+  const p3Name = match.player3?.name ?? 'Opp 1'
+  const p4Name = match.player4?.name ?? 'Opp 2'
+  const isDoubles = match.match_type === 'doubles'
   const server = currentGame.server as PlayerSlot
   const serverTeam = teamOfPlayer(server)
-  const servingName = serverTeam === 'team1' ? p1Name : p2Name
+  const servingName = server === 'player1' ? p1Name : server === 'player2' ? p2Name : server === 'player3' ? p3Name : p4Name
 
   const completedSets = match.sets?.filter((s) => s.winner) ?? []
   const t1sets = completedSets.filter((s) => s.winner === 'team1').length
@@ -294,14 +297,14 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
               <div className="text-right">
                 <div className={`text-xs font-medium ${serverTeam === 'team1' ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                  {p1Name}{serverTeam === 'team1' && ' ●'}
+                  {p1Name}{isDoubles ? ` / ${p3Name}` : ''}{serverTeam === 'team1' && ' ●'}
                 </div>
                 <div className="mt-1 font-mono text-5xl font-bold">{isDeuce ? 'D' : t1label}</div>
               </div>
               <div className="text-lg text-zinc-600">:</div>
               <div className="text-left">
                 <div className={`text-xs font-medium ${serverTeam === 'team2' ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                  {serverTeam === 'team2' && '● '}{p2Name}
+                  {serverTeam === 'team2' && '● '}{p2Name}{isDoubles ? ` / ${p4Name}` : ''}
                 </div>
                 <div className="mt-1 font-mono text-5xl font-bold">{isDeuce ? 'D' : t2label}</div>
               </div>
@@ -326,7 +329,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
         <div className="space-y-3">
           {step !== 'serve_placement' && (
-            <button onClick={back} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all">
+            <button onClick={back} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-5 py-4 text-base font-medium text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all">
               <ChevronLeft className="h-4 w-4" />
               Back
             </button>
@@ -341,6 +344,9 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             courtSide={courtSide}
             p1Name={p1Name}
             p2Name={p2Name}
+            p3Name={p3Name}
+            p4Name={p4Name}
+            isDoubles={isDoubles}
             server={server}
             onGo={go}
             onFault={handleFault}
@@ -366,7 +372,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 }
 
 function StepContent({
-  step, draft, setDraft, serveNumber, setServeNumber, courtSide, p1Name, p2Name, server, onGo, onFault, onSave, saving,
+  step, draft, setDraft, serveNumber, setServeNumber, courtSide, p1Name, p2Name, p3Name, p4Name, isDoubles, server, onGo, onFault, onSave, saving,
 }: {
   step: Step
   draft: PointDraft
@@ -376,13 +382,16 @@ function StepContent({
   courtSide: 'deuce' | 'ad'
   p1Name: string
   p2Name: string
+  p3Name: string
+  p4Name: string
+  isDoubles: boolean
   server: PlayerSlot
   onGo: (step: Step, update: Partial<PointDraft>) => void
   onFault: () => void
   onSave: (draft: PointDraft) => void
   saving: boolean
 }) {
-  const serverName = teamOfPlayer(server) === 'team1' ? p1Name : p2Name
+  const serverName = server === 'player1' ? p1Name : server === 'player2' ? p2Name : server === 'player3' ? p3Name : p4Name
   const isSecond = serveNumber === 2
 
   if (step === 'serve_placement') {
@@ -503,7 +512,7 @@ function StepContent({
                 <button
                   key={n}
                   onClick={() => setDraft((d) => ({ ...d, rally_length: n }))}
-                  className={`rounded-md border py-2 text-sm font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
+                  className={`rounded-md border py-3 text-base font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
                 >
                   {n}
                 </button>
@@ -516,22 +525,12 @@ function StepContent({
             </div>
           </div>
           <Grid2>
-            <ChoiceBtn
-              label={p1Name}
-              accent="green"
-              onClick={() => {
-                const pointWinner: Team = draft.outcome === 'winner' ? 'team1' : 'team2'
-                onGo('shot_type', { point_winner: pointWinner, last_shot_player: 'player1' as PlayerSlot })
-              }}
-            />
-            <ChoiceBtn
-              label={p2Name}
-              accent="green"
-              onClick={() => {
-                const pointWinner: Team = draft.outcome === 'winner' ? 'team2' : 'team1'
-                onGo('shot_type', { point_winner: pointWinner, last_shot_player: 'player2' as PlayerSlot })
-              }}
-            />
+            <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team1' : 'team2', last_shot_player: 'player1' as PlayerSlot })} />
+            <ChoiceBtn label={p2Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team2' : 'team1', last_shot_player: 'player2' as PlayerSlot })} />
+            {isDoubles && <>
+              <ChoiceBtn label={p3Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team1' : 'team2', last_shot_player: 'player3' as PlayerSlot })} />
+              <ChoiceBtn label={p4Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team2' : 'team1', last_shot_player: 'player4' as PlayerSlot })} />
+            </>}
           </Grid2>
         </div>
       </StepCard>
@@ -848,7 +847,7 @@ function Grid3({ children }: { children: React.ReactNode }) {
 }
 
 function ChoiceBtn({ label, onClick, accent, className }: { label: string; onClick: () => void; accent?: 'green' | 'red'; className?: string }) {
-  const base = 'rounded-lg border py-4 text-sm font-medium transition-colors active:scale-95'
+  const base = 'rounded-lg border py-5 text-base font-medium transition-colors active:scale-95'
   const colors = accent === 'green'
     ? 'border-emerald-700/50 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50'
     : accent === 'red'

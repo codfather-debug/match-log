@@ -12,6 +12,8 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       *,
       player1:players!matches_player1_id_fkey(id, name),
       player2:players!matches_player2_id_fkey(id, name),
+      player3:players!matches_player3_id_fkey(id, name),
+      player4:players!matches_player4_id_fkey(id, name),
       sets(*, games(*, points(*)))
     `)
     .eq('id', id)
@@ -24,6 +26,8 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       id={id}
       p1={match.player1?.name ?? 'P1'}
       p2={match.player2?.name ?? 'P2'}
+      p3={match.player3?.name ?? undefined}
+      p4={match.player4?.name ?? undefined}
       status={match.status}
       winner={match.winner ?? null}
       matchType={match.match_type}

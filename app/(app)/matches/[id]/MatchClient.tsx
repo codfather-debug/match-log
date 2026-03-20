@@ -19,11 +19,12 @@ type SetRow = {
 }
 
 type Props = {
-  id: string; p1: string; p2: string; status: string; winner: string | null
+  id: string; p1: string; p2: string; p3?: string; p4?: string
+  status: string; winner: string | null
   matchType: string; createdAt: string; sets: SetRow[]
 }
 
-type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue'
+type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns'
 
 function count<T>(arr: T[], pred: (x: T) => boolean) { return arr.filter(pred).length }
 function byKey<T>(arr: T[], key: (x: T) => string | null | undefined) {
@@ -87,10 +88,36 @@ function computeStats(points: Point[]) {
     svcLoc2by1: byKey(p2.filter(p => p.serve_number === 1), p => p.serve_placement),
     svcLoc2by2: byKey(p2.filter(p => p.serve_number === 2), p => p.serve_placement),
     p1Total: p1.length, p2Total: p2.length,
+    // Returns: team1 receives when player2/player4 serves; team2 receives when player1/player3 serves
+    ...(() => {
+      const isUnsuccessfulReturn = (p: Point) =>
+        p.outcome === 'ace' ||
+        ((p.outcome === 'unforced_error' || p.outcome === 'error') && p.last_shot_type === 'return')
+      const ret1pts = points.filter(p => p.server === 'player2' || p.server === 'player4')
+      const ret2pts = points.filter(p => p.server === 'player1' || p.server === 'player3')
+      const ret1by1 = ret1pts.filter(p => p.serve_number === 1)
+      const ret1by2 = ret1pts.filter(p => p.serve_number === 2)
+      const ret2by1 = ret2pts.filter(p => p.serve_number === 1)
+      const ret2by2 = ret2pts.filter(p => p.serve_number === 2)
+      return {
+        retTotal1: ret1pts.length, retTotal2: ret2pts.length,
+        retSucc1: count(ret1pts, p => !isUnsuccessfulReturn(p)),
+        retSucc2: count(ret2pts, p => !isUnsuccessfulReturn(p)),
+        retSucc1by1: count(ret1by1, p => !isUnsuccessfulReturn(p)), retTotal1by1: ret1by1.length,
+        retSucc1by2: count(ret1by2, p => !isUnsuccessfulReturn(p)), retTotal1by2: ret1by2.length,
+        retSucc2by1: count(ret2by1, p => !isUnsuccessfulReturn(p)), retTotal2by1: ret2by1.length,
+        retSucc2by2: count(ret2by2, p => !isUnsuccessfulReturn(p)), retTotal2by2: ret2by2.length,
+        retLocTotal1: byKey(ret1pts, p => p.serve_placement),
+        retLocSucc1: byKey(ret1pts.filter(p => !isUnsuccessfulReturn(p)), p => p.serve_placement),
+        retLocTotal2: byKey(ret2pts, p => p.serve_placement),
+        retLocSucc2: byKey(ret2pts.filter(p => !isUnsuccessfulReturn(p)), p => p.serve_placement),
+      }
+    })(),
   }
 }
 
-export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, sets }: Props) {
+export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets }: Props) {
+  const isDoubles = matchType === 'doubles'
   const router = useRouter()
   const [activeSet, setActiveSet] = useState<'all' | number>('all')
   const [activeTab, setActiveTab] = useState<StatTab>('all')
@@ -144,6 +171,7 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
     { id: 'df', label: 'Dbl Faults' },
     { id: 'winners', label: 'Winners' },
     { id: 'ue', label: 'UErrors' },
+    { id: 'returns', label: 'Returns' },
   ]
 
   return (
@@ -166,7 +194,9 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/matches" className="text-zinc-400 hover:text-zinc-100"><ArrowLeft className="h-4 w-4" /></Link>
-          <h1 className="text-xl font-semibold">{p1} vs {p2}</h1>
+          <h1 className="text-xl font-semibold">
+            {isDoubles ? `${p1}/${p3 ?? 'Opp 1'} vs ${p2}/${p4 ?? 'Opp 2'}` : `${p1} vs ${p2}`}
+          </h1>
         </div>
         <div className="flex items-center gap-2">
           {status === 'in_progress' && (
@@ -193,12 +223,12 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
           {winnerName && <p className="mb-3 text-center text-xs font-medium text-emerald-400">{winnerName} wins</p>}
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             <div className="text-right">
-              <p className={`text-sm font-medium ${winner === 'team1' ? 'text-white' : 'text-zinc-400'}`}>{p1}</p>
+              <p className={`text-sm font-medium ${winner === 'team1' ? 'text-white' : 'text-zinc-400'}`}>{p1}{isDoubles && p3 ? ` / ${p3}` : ''}</p>
               <p className="mt-0.5 font-mono text-4xl font-bold">{t1Sets}</p>
             </div>
             <p className="text-xl text-zinc-600">–</p>
             <div className="text-left">
-              <p className={`text-sm font-medium ${winner === 'team2' ? 'text-white' : 'text-zinc-400'}`}>{p2}</p>
+              <p className={`text-sm font-medium ${winner === 'team2' ? 'text-white' : 'text-zinc-400'}`}>{p2}{isDoubles && p4 ? ` / ${p4}` : ''}</p>
               <p className="mt-0.5 font-mono text-4xl font-bold">{t2Sets}</p>
             </div>
           </div>
@@ -398,6 +428,39 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
         </Card>
       )}
 
+      {activeTab === 'returns' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Returns</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <TwoColHeader p1={p1} p2={p2} />
+            <StatRow label="Returns faced" v1={s.retTotal1} v2={s.retTotal2} />
+            <StatRow label="Return in-play %" v1={s.retTotal1 ? `${Math.round((s.retSucc1/s.retTotal1)*100)}%` : '—'} v2={s.retTotal2 ? `${Math.round((s.retSucc2/s.retTotal2)*100)}%` : '—'} />
+            <Divider label="By serve number" />
+            <StatRow label="1st serve faced" v1={s.retTotal1by1} v2={s.retTotal2by1} />
+            <StatRow label="1st return in-play %" v1={s.retTotal1by1 ? `${Math.round((s.retSucc1by1/s.retTotal1by1)*100)}%` : '—'} v2={s.retTotal2by1 ? `${Math.round((s.retSucc2by1/s.retTotal2by1)*100)}%` : '—'} />
+            <StatRow label="2nd serve faced" v1={s.retTotal1by2} v2={s.retTotal2by2} />
+            <StatRow label="2nd return in-play %" v1={s.retTotal1by2 ? `${Math.round((s.retSucc1by2/s.retTotal1by2)*100)}%` : '—'} v2={s.retTotal2by2 ? `${Math.round((s.retSucc2by2/s.retTotal2by2)*100)}%` : '—'} />
+            <Divider label="By serve location" />
+            {(['T', 'body', 'wide'] as const).map(loc => {
+              const t1 = s.retLocTotal1[loc] ?? 0
+              const t2 = s.retLocTotal2[loc] ?? 0
+              const s1 = s.retLocSucc1[loc] ?? 0
+              const s2 = s.retLocSucc2[loc] ?? 0
+              if (t1 + t2 === 0) return null
+              return (
+                <BreakdownRow
+                  key={loc}
+                  label={loc === 'T' ? 'T' : loc === 'body' ? 'Body' : 'Wide'}
+                  v1={s1} v2={s2} max={Math.max(t1, t2, 1)}
+                  sub1={t1 ? `${Math.round((s1/t1)*100)}%` : undefined}
+                  sub2={t2 ? `${Math.round((s2/t2)*100)}%` : undefined}
+                />
+              )
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Point log */}
       {filteredPoints.length > 0 && (
         <div className="space-y-3">
@@ -441,23 +504,29 @@ function Divider({ label }: { label: string }) {
   )
 }
 
-function BreakdownRow({ label, v1, v2, max, muted }: { label: string; v1: number; v2: number; max: number; muted?: boolean }) {
+function BreakdownRow({ label, v1, v2, max, muted, sub1, sub2 }: { label: string; v1: number; v2: number; max: number; muted?: boolean; sub1?: string; sub2?: string }) {
   const pct1 = max > 0 ? (v1 / max) * 100 : 0
   const pct2 = max > 0 ? (v2 / max) * 100 : 0
   return (
     <div className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs${muted ? ' opacity-50' : ''}`}>
-      <div className="flex items-center justify-end gap-2">
-        <span className="font-mono text-zinc-300 w-4 text-right">{v1}</span>
-        <div className="h-2 rounded-full bg-blue-400/30 overflow-hidden" style={{ width: 60 }}>
-          <div className="h-full rounded-full bg-blue-400 transition-all" style={{ width: `${pct1}%`, marginLeft: `${100 - pct1}%` }} />
+      <div className="flex flex-col items-end gap-0.5">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-zinc-300 w-4 text-right">{v1}</span>
+          <div className="h-2 rounded-full bg-blue-400/30 overflow-hidden" style={{ width: 60 }}>
+            <div className="h-full rounded-full bg-blue-400 transition-all" style={{ width: `${pct1}%`, marginLeft: `${100 - pct1}%` }} />
+          </div>
         </div>
+        {sub1 && <span className="text-zinc-500 text-[10px] pr-1">{sub1}</span>}
       </div>
       <span className="text-center text-zinc-500 w-16">{label}</span>
-      <div className="flex items-center gap-2">
-        <div className="h-2 rounded-full bg-rose-400/30 overflow-hidden" style={{ width: 60 }}>
-          <div className="h-full rounded-full bg-rose-400 transition-all" style={{ width: `${pct2}%` }} />
+      <div className="flex flex-col items-start gap-0.5">
+        <div className="flex items-center gap-2">
+          <div className="h-2 rounded-full bg-rose-400/30 overflow-hidden" style={{ width: 60 }}>
+            <div className="h-full rounded-full bg-rose-400 transition-all" style={{ width: `${pct2}%` }} />
+          </div>
+          <span className="font-mono text-zinc-300 w-4">{v2}</span>
         </div>
-        <span className="font-mono text-zinc-300 w-4">{v2}</span>
+        {sub2 && <span className="text-zinc-500 text-[10px] pl-1">{sub2}</span>}
       </div>
     </div>
   )
