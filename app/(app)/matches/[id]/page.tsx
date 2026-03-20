@@ -33,6 +33,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       matchType={match.match_type}
       createdAt={match.created_at}
       sets={match.sets ?? []}
+      notes={match.notes}
     />
   )
 }

@@ -30,22 +30,24 @@ export default async function PlayersPage() {
       {players && players.length > 0 ? (
         <div className="space-y-2">
           {players.map((player) => (
-            <Card key={player.id}>
-              <CardContent className="flex items-center gap-3 p-4">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium">
-                  {player.name[0].toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{player.name}</div>
-                  <div className="text-xs text-zinc-500">
-                    {[player.handedness && `${player.handedness}-handed`, player.nationality]
-                      .filter(Boolean)
-                      .join(' · ') || 'No details'}
+            <Link key={player.id} href={`/players/${player.id}`}>
+              <Card className="hover:border-zinc-700 transition-colors">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium">
+                    {player.name[0].toUpperCase()}
                   </div>
-                </div>
-                <div className="text-xs text-zinc-600">{formatDate(player.created_at)}</div>
-              </CardContent>
-            </Card>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{player.name}</div>
+                    <div className="text-xs text-zinc-500">
+                      {[player.handedness && `${player.handedness}-handed`, player.nationality]
+                        .filter(Boolean)
+                        .join(' · ') || 'No details'}
+                    </div>
+                  </div>
+                  <div className="text-xs text-zinc-600">{formatDate(player.created_at)}</div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       ) : (

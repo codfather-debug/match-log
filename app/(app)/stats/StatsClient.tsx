@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { computeStats } from '@/lib/stats'
 import type { Point } from '@/types/tennis'
@@ -35,17 +36,23 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
 
   const s = useMemo(() => computeStats(allPoints), [allPoints])
 
-  // Per-opponent records
+  // Per-opponent records keyed by player id for H2H links
   const opponentRecords = useMemo(() => {
-    const map: Record<string, { name: string; wins: number; losses: number }> = {}
+    const map: Record<string, { id: string; name: string; wins: number; losses: number }> = {}
     for (const m of matches) {
+      const oppId = m.player2?.id ?? 'unknown'
       const oppName = m.player2?.name ?? 'Unknown'
-      if (!map[oppName]) map[oppName] = { name: oppName, wins: 0, losses: 0 }
-      if (m.winner === 'team1') map[oppName].wins++
-      else map[oppName].losses++
+      if (!map[oppId]) map[oppId] = { id: oppId, name: oppName, wins: 0, losses: 0 }
+      if (m.winner === 'team1') map[oppId].wins++
+      else if (m.winner === 'team2') map[oppId].losses++
     }
     return Object.values(map).sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses))
   }, [matches])
+
+  // Recent form — last 10 completed matches
+  const recentForm = useMemo(() =>
+    matches.filter(m => m.winner).slice(0, 10).map(m => m.winner === 'team1' ? 'W' : 'L')
+  , [matches])
 
   const statTabs: { id: StatTab; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -189,23 +196,39 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
         </Card>
       )}
 
+      {/* Recent form */}
+      {recentForm.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium text-zinc-400">Recent form</h2>
+          <div className="flex gap-1.5">
+            {recentForm.map((r, i) => (
+              <div key={i} className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${r === 'W' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                {r}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Per-opponent records */}
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-zinc-400">vs Opponents</h2>
         {opponentRecords.map(opp => (
-          <Card key={opp.name}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <p className="text-sm font-medium">{opp.name}</p>
-                <p className="text-xs text-zinc-500">{opp.wins + opp.losses} match{opp.wins + opp.losses !== 1 ? 'es' : ''}</p>
-              </div>
-              <div className="flex items-center gap-3 font-mono text-sm">
-                <span className="text-emerald-400 font-bold">{opp.wins}W</span>
-                <span className="text-zinc-600">–</span>
-                <span className="text-red-400 font-bold">{opp.losses}L</span>
-              </div>
-            </CardContent>
-          </Card>
+          <Link key={opp.id} href={`/stats/vs/${opp.id}`}>
+            <Card className="hover:border-zinc-700 transition-colors">
+              <CardContent className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-sm font-medium">{opp.name}</p>
+                  <p className="text-xs text-zinc-500">{opp.wins + opp.losses} match{opp.wins + opp.losses !== 1 ? 'es' : ''}</p>
+                </div>
+                <div className="flex items-center gap-3 font-mono text-sm">
+                  <span className="text-emerald-400 font-bold">{opp.wins}W</span>
+                  <span className="text-zinc-600">–</span>
+                  <span className="text-red-400 font-bold">{opp.losses}L</span>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
     </div>

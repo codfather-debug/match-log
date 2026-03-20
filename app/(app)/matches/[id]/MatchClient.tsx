@@ -23,11 +23,12 @@ type Props = {
   id: string; p1: string; p2: string; p3?: string; p4?: string
   status: string; winner: string | null
   matchType: string; createdAt: string; sets: SetRow[]
+  notes?: string | null
 }
 
 type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns'
 
-export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets }: Props) {
+export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets, notes }: Props) {
   const isDoubles = matchType === 'doubles'
   const router = useRouter()
   const [activeSet, setActiveSet] = useState<'all' | number>('all')
@@ -36,6 +37,15 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
   const [deleting, setDeleting] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [loadingAI, setLoadingAI] = useState(false)
+  const [notesValue, setNotesValue] = useState(notes ?? '')
+
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const supabase = createClient()
+      await supabase.from('matches').update({ notes: notesValue }).eq('id', id)
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [notesValue])
 
   const allPoints: Point[] = sets.flatMap(s => s.games.flatMap(g => g.points ?? []))
   const filteredPoints: Point[] = activeSet === 'all'
@@ -397,6 +407,18 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
           </CardContent>
         </Card>
       )}
+
+      {/* Notes */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-zinc-500">Match notes</p>
+        <textarea
+          value={notesValue}
+          onChange={e => setNotesValue(e.target.value)}
+          placeholder="Add notes about this match…"
+          rows={3}
+          className="w-full rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none resize-none"
+        />
+      </div>
 
       {/* Point log */}
       {filteredPoints.length > 0 && (

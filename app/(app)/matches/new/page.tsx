@@ -9,12 +9,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Plus, X } from 'lucide-react'
 import Link from 'next/link'
-import type { Player } from '@/types/tennis'
+import type { Player, MatchType } from '@/types/tennis'
 
 export default function NewMatchPage() {
   const router = useRouter()
   const [players, setPlayers] = useState<Player[]>([])
-  const [matchType, setMatchType] = useState<'singles' | 'doubles'>('singles')
+  const [matchType, setMatchType] = useState<MatchType>('singles')
   const [player1, setPlayer1] = useState('')
   const [player2, setPlayer2] = useState('')
   const [player3, setPlayer3] = useState('')
@@ -98,8 +98,9 @@ export default function NewMatchPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!player1 || !player2) return setError('Select both players.')
-    if (player1 === player2) return setError('Players must be different.')
+    if (!player1) return setError('Select at least yourself as Player 1.')
+    if (matchType !== 'practice' && !player2) return setError('Select both players.')
+    if (matchType !== 'practice' && player1 === player2) return setError('Players must be different.')
     if (matchType === 'doubles' && (!player3 || !player4)) return setError('Select all 4 players for doubles.')
 
     setLoading(true)
@@ -146,6 +147,8 @@ export default function NewMatchPage() {
     router.push(`/matches/${match.id}/live`)
   }
 
+  const isPractice = matchType === 'practice'
+
   const playerOptions = players.map((p) => (
     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
   ))
@@ -164,7 +167,7 @@ export default function NewMatchPage() {
         <div className="space-y-1.5">
           <Label>Match type</Label>
           <div className="flex gap-2">
-            {(['singles', 'doubles'] as const).map((t) => (
+            {(['singles', 'doubles', 'practice'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -234,12 +237,13 @@ export default function NewMatchPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{matchType === 'doubles' ? 'Team 1 · Player A' : 'Player 1'}</p>
+              <p className="text-xs text-zinc-500">{matchType === 'doubles' ? 'Team 1 · Player A' : isPractice ? 'You' : 'Player 1'}</p>
               <Select value={player1} onValueChange={setPlayer1}>
                 <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                 <SelectContent>{playerOptions}</SelectContent>
               </Select>
             </div>
+            {!isPractice && (
             <div className="space-y-1">
               <p className="text-xs text-zinc-500">{matchType === 'doubles' ? 'Team 2 · Player A' : 'Player 2'}</p>
               <Select value={player2} onValueChange={setPlayer2}>
@@ -247,6 +251,7 @@ export default function NewMatchPage() {
                 <SelectContent>{playerOptions}</SelectContent>
               </Select>
             </div>
+            )}
             {matchType === 'doubles' && (
               <>
                 <div className="space-y-1">
@@ -268,8 +273,14 @@ export default function NewMatchPage() {
           </div>
         </div>
 
+        {isPractice && (
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-400">
+            Practice sessions log points without game scoring. Stats are tracked the same way — great for drills and warm-ups.
+          </div>
+        )}
+
         {/* Format */}
-        <div className="space-y-3">
+        {!isPractice && <div className="space-y-3">
           <Label>Format</Label>
           <div className="space-y-2">
             <div className="space-y-1">
@@ -297,7 +308,7 @@ export default function NewMatchPage() {
               <Toggle label="No-Ad scoring" value={noAd} onChange={setNoAd} />
             </div>
           </div>
-        </div>
+        </div>}
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 

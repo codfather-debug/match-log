@@ -1,4 +1,4 @@
-export type MatchType = 'singles' | 'doubles'
+export type MatchType = 'singles' | 'doubles' | 'practice'
 export type MatchStatus = 'pending' | 'in_progress' | 'completed'
 export type MatchFormat = {
   sets: 3 | 5
@@ -48,6 +48,7 @@ export interface Match {
   player3_id: string | null
   player4_id: string | null
   winner: Team | null
+  notes: string | null
   started_at: string | null
   completed_at: string | null
   created_at: string

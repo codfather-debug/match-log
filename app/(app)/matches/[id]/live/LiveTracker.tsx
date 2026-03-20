@@ -75,10 +75,11 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const setData = currentSet
 
   const p1Name = match.player1?.name ?? 'P1'
-  const p2Name = match.player2?.name ?? 'P2'
+  const p2Name = match.player2?.name ?? 'Partner'
   const p3Name = match.player3?.name ?? 'Opp 1'
   const p4Name = match.player4?.name ?? 'Opp 2'
   const isDoubles = match.match_type === 'doubles'
+  const isPractice = match.match_type === 'practice'
   const server = currentGame.server as PlayerSlot
   const serverTeam = teamOfPlayer(server)
   const servingName = server === 'player1' ? p1Name : server === 'player2' ? p2Name : server === 'player3' ? p3Name : p4Name
@@ -148,6 +149,14 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     const newT1 = game.team1_points + (winner === 'team1' ? 1 : 0)
     const newT2 = game.team2_points + (winner === 'team2' ? 1 : 0)
 
+    // Practice mode: just update running tally, skip game/set scoring
+    if (isPractice) {
+      await supabase.from('games').update({ team1_points: newT1, team2_points: newT2 }).eq('id', game.id)
+      setServeNumber(1); setSaving(false); setDraft(emptyDraft()); setStep('serve_placement')
+      router.refresh()
+      return
+    }
+
     const gWinner = isTB
       ? tiebreakWinner(newT1, newT2, setData.is_super_tiebreak)
       : gameWinner(newT1, newT2, match.format?.noAd ?? false)
@@ -167,7 +176,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
         .update({ team1_games: newS1, team2_games: newS2, winner: sWinner })
         .eq('id', setData.id)
 
-      const newServer = nextServer(server, match.match_type)
+      const newServer = nextServer(server, match.match_type === 'doubles' ? 'doubles' : 'singles')
 
       if (sWinner) {
         const newT1Sets = t1sets + (sWinner === 'team1' ? 1 : 0)
@@ -285,6 +294,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       <div className="mx-auto w-full max-w-md px-4 pt-4">
         <Card className="border-zinc-800">
           <CardContent className="p-4">
+            {isPractice ? (
+              <div className="mb-3 flex items-center justify-center gap-2 text-xs">
+                <Badge variant="outline" className="text-xs border-yellow-600 text-yellow-500">Practice</Badge>
+                <span className="text-zinc-500">{completedPoints.length} pts logged</span>
+              </div>
+            ) : (
             <div className="mb-3 flex items-center justify-center gap-1.5 text-xs">
               {completedSets.map((s, i) => (
                 <span key={i} className="font-mono text-zinc-500">{s.team1_games}-{s.team2_games}</span>
@@ -293,7 +308,21 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               <Badge variant="serve" className="text-xs">Set {currentSet.set_number}</Badge>
               <span className="font-mono text-zinc-400">{currentSet.team1_games}-{currentSet.team2_games}</span>
             </div>
+            )}
 
+            {isPractice ? (
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                <div className="text-right">
+                  <div className="text-xs font-medium text-yellow-400">{p1Name} ●</div>
+                  <div className="mt-1 font-mono text-5xl font-bold">{game.team1_points}</div>
+                </div>
+                <div className="text-lg text-zinc-600">:</div>
+                <div className="text-left">
+                  <div className="text-xs font-medium text-zinc-400">{p2Name}</div>
+                  <div className="mt-1 font-mono text-5xl font-bold">{game.team2_points}</div>
+                </div>
+              </div>
+            ) : (
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
               <div className="text-right">
                 <div className={`text-xs font-medium ${serverTeam === 'team1' ? 'text-yellow-400' : 'text-zinc-400'}`}>
@@ -309,6 +338,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
                 <div className="mt-1 font-mono text-5xl font-bold">{isDeuce ? 'D' : t2label}</div>
               </div>
             </div>
+            )}
 
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-zinc-500">
               <span className="capitalize">{courtSide} side</span>
