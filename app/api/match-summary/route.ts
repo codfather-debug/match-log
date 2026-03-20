@@ -26,7 +26,7 @@ Stats:
 - UE directions: ${p1} ${JSON.stringify(stats.ueDirs1)}, ${p2} ${JSON.stringify(stats.ueDirs2)}`
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
     const result = await model.generateContent(prompt)
     const text = result.response.text()
     return NextResponse.json({ summary: text })
