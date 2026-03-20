@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ import type {
   ShotType,
 } from '@/types/tennis'
 
-type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'confirm'
+type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'rally_length' | 'confirm'
 
 const emptyDraft = (): PointDraft => ({
   serve_number: 1,
@@ -62,6 +62,14 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const [lastUndo, setLastUndo] = useState<Point | null>(null)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
   const [ending, setEnding] = useState(false)
+
+  // Server picker: shown at start of match, each new set, and tiebreaks
+  const needsServerPick = (g: typeof currentGame) =>
+    (g?.points?.length ?? 0) === 0 && (g?.game_number === 1 || !!g?.is_tiebreak)
+  const [serverConfirmed, setServerConfirmed] = useState(() => !needsServerPick(currentGame))
+  useEffect(() => {
+    if (needsServerPick(currentGame)) setServerConfirmed(false)
+  }, [currentGame?.id])
 
   if (!currentSet || !currentGame) {
     return (
@@ -113,9 +121,10 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   function back() {
     if (step === 'shot_type') {
       const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
-      return setStep(isError ? 'error_direction' : 'point_winner')
+      return setStep(isError ? 'error_direction' : 'rally_length')
     }
-    if (step === 'error_direction') return setStep('point_winner')
+    if (step === 'error_direction') return setStep('rally_length')
+    if (step === 'rally_length') return setStep('point_winner')
     if (step === 'point_winner') return setStep('serve_result')
     if (step === 'serve_result') return setStep('serve_placement')
   }
@@ -357,33 +366,55 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
 
       {/* Step logger */}
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
-        <div className="space-y-3">
-          {step !== 'serve_placement' && (
-            <button onClick={back} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-5 py-4 text-base font-medium text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all">
-              <ChevronLeft className="h-4 w-4" />
-              Back
-            </button>
-          )}
+        {!serverConfirmed ? (
+          <StepCard title="Who is serving?">
+            <div className="flex flex-col gap-2">
+              {([
+                { label: p1Name, slot: 'player1' },
+                { label: p2Name, slot: 'player2' },
+                ...(isDoubles ? [{ label: p3Name, slot: 'player3' }, { label: p4Name, slot: 'player4' }] : []),
+              ] as { label: string; slot: PlayerSlot }[]).map(({ label, slot }) => (
+                <ChoiceBtn
+                  key={slot}
+                  label={label}
+                  onClick={async () => {
+                    await supabase.from('games').update({ server: slot }).eq('id', game.id)
+                    setServerConfirmed(true)
+                    router.refresh()
+                  }}
+                />
+              ))}
+            </div>
+          </StepCard>
+        ) : (
+          <div className="space-y-3">
+            {step !== 'serve_placement' && (
+              <button onClick={back} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-5 py-4 text-base font-medium text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all">
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </button>
+            )}
 
-          <StepContent
-            step={step}
-            draft={draft}
-            setDraft={setDraft}
-            serveNumber={serveNumber}
-            setServeNumber={setServeNumber}
-            courtSide={courtSide}
-            p1Name={p1Name}
-            p2Name={p2Name}
-            p3Name={p3Name}
-            p4Name={p4Name}
-            isDoubles={isDoubles}
-            server={server}
-            onGo={go}
-            onFault={handleFault}
-            onSave={savePoint}
-            saving={saving}
-          />
-        </div>
+            <StepContent
+              step={step}
+              draft={draft}
+              setDraft={setDraft}
+              serveNumber={serveNumber}
+              setServeNumber={setServeNumber}
+              courtSide={courtSide}
+              p1Name={p1Name}
+              p2Name={p2Name}
+              p3Name={p3Name}
+              p4Name={p4Name}
+              isDoubles={isDoubles}
+              server={server}
+              onGo={go}
+              onFault={handleFault}
+              onSave={savePoint}
+              saving={saving}
+            />
+          </div>
+        )}
       </div>
 
       {/* Recent points */}
@@ -533,37 +564,44 @@ function StepContent({
 
   if (step === 'point_winner') {
     const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
-    const nextStep: Step = isError ? 'error_direction' : 'shot_type'
     return (
       <StepCard title="Who won the point?">
+        <div className="flex flex-col gap-2">
+          <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo('rally_length', { point_winner: 'team1', last_shot_player: isError ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })} />
+          <ChoiceBtn label={p2Name} accent="green" onClick={() => onGo('rally_length', { point_winner: 'team2', last_shot_player: isError ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })} />
+        </div>
+      </StepCard>
+    )
+  }
+
+  if (step === 'rally_length') {
+    const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+    const nextStep: Step = isError ? 'error_direction' : 'shot_type'
+    return (
+      <StepCard title="Rally length">
         <div className="space-y-3">
-          <div className="rounded-md border border-zinc-800 p-3 space-y-2">
-            <p className="text-center text-xs text-zinc-500">Rally length (strokes)</p>
-            <div className="grid grid-cols-5 gap-1.5">
-              {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setDraft((d) => ({ ...d, rally_length: n }))}
-                  className={`rounded-md border py-3 text-base font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center justify-center gap-4 pt-1">
-              <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
-              <span className="w-8 text-center text-lg font-bold">{draft.rally_length}</span>
-              <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
-            </div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+              <button
+                key={n}
+                onClick={() => setDraft((d) => ({ ...d, rally_length: n }))}
+                className={`rounded-md border py-3 text-base font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
+              >
+                {n}
+              </button>
+            ))}
           </div>
-          <Grid2>
-            <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team1', last_shot_player: isError ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })} />
-            <ChoiceBtn label={p2Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team2', last_shot_player: isError ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })} />
-            {isDoubles && <>
-              <ChoiceBtn label={p3Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team1', last_shot_player: isError ? null : 'player3' as PlayerSlot })} />
-              <ChoiceBtn label={p4Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team2', last_shot_player: isError ? null : 'player4' as PlayerSlot })} />
-            </>}
-          </Grid2>
+          <div className="flex items-center justify-center gap-4">
+            <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
+            <span className="w-8 text-center text-lg font-bold">{draft.rally_length}</span>
+            <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
+          </div>
+          <button
+            onClick={() => onGo(nextStep, { rally_length: draft.rally_length || 0 })}
+            className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-3.5 text-base font-semibold text-zinc-100 hover:bg-zinc-700 transition-colors"
+          >
+            {draft.rally_length > 0 ? 'Next →' : 'Skip'}
+          </button>
         </div>
       </StepCard>
     )
