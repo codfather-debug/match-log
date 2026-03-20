@@ -315,13 +315,15 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
             <StatRow label="1st in" v1={`${s.fs1In}/${s.p1Total}`} v2={`${s.fs2In}/${s.p2Total}`} />
             <StatRow label="2nd in" v1={`${s.ss1Total - s.df1}/${s.ss1Total}`} v2={`${s.ss2Total - s.df2}/${s.ss2Total}`} />
             <Divider label="1st serve locations (in)" />
-            <BreakdownRow label="T" v1={s.svcLoc1by1['T'] ?? 0} v2={s.svcLoc2by1['T'] ?? 0} max={s.p1Total} />
-            <BreakdownRow label="Body" v1={s.svcLoc1by1['body'] ?? 0} v2={s.svcLoc2by1['body'] ?? 0} max={s.p1Total} />
-            <BreakdownRow label="Wide" v1={s.svcLoc1by1['wide'] ?? 0} v2={s.svcLoc2by1['wide'] ?? 0} max={s.p1Total} />
+            <BreakdownRow label="T" v1={s.svcLoc1by1['T'] ?? 0} v2={s.svcLoc2by1['T'] ?? 0} max={s.fs1In || 1} />
+            <BreakdownRow label="Body" v1={s.svcLoc1by1['body'] ?? 0} v2={s.svcLoc2by1['body'] ?? 0} max={s.fs1In || 1} />
+            <BreakdownRow label="Wide" v1={s.svcLoc1by1['wide'] ?? 0} v2={s.svcLoc2by1['wide'] ?? 0} max={s.fs1In || 1} />
+            {(() => { const nr1 = s.fs1In - (s.svcLoc1by1['T'] ?? 0) - (s.svcLoc1by1['body'] ?? 0) - (s.svcLoc1by1['wide'] ?? 0); const nr2 = s.fs2In - (s.svcLoc2by1['T'] ?? 0) - (s.svcLoc2by1['body'] ?? 0) - (s.svcLoc2by1['wide'] ?? 0); return (nr1 > 0 || nr2 > 0) ? <BreakdownRow label="Not recorded" v1={nr1} v2={nr2} max={s.fs1In || 1} muted /> : null })()}
             <Divider label="2nd serve locations (in)" />
             <BreakdownRow label="T" v1={s.svcLoc1by2['T'] ?? 0} v2={s.svcLoc2by2['T'] ?? 0} max={s.ss1Total || 1} />
             <BreakdownRow label="Body" v1={s.svcLoc1by2['body'] ?? 0} v2={s.svcLoc2by2['body'] ?? 0} max={s.ss1Total || 1} />
             <BreakdownRow label="Wide" v1={s.svcLoc1by2['wide'] ?? 0} v2={s.svcLoc2by2['wide'] ?? 0} max={s.ss1Total || 1} />
+            {(() => { const nr1 = s.ss1Total - (s.svcLoc1by2['T'] ?? 0) - (s.svcLoc1by2['body'] ?? 0) - (s.svcLoc1by2['wide'] ?? 0); const nr2 = s.ss2Total - (s.svcLoc2by2['T'] ?? 0) - (s.svcLoc2by2['body'] ?? 0) - (s.svcLoc2by2['wide'] ?? 0); return (nr1 > 0 || nr2 > 0) ? <BreakdownRow label="Not recorded" v1={nr1} v2={nr2} max={s.ss1Total || 1} muted /> : null })()}
           </CardContent>
         </Card>
       )}
@@ -353,6 +355,7 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
             <BreakdownRow label="T" v1={s.dfLoc1['T'] ?? 0} v2={s.dfLoc2['T'] ?? 0} max={Math.max(s.df1, s.df2, 1)} />
             <BreakdownRow label="Body" v1={s.dfLoc1['body'] ?? 0} v2={s.dfLoc2['body'] ?? 0} max={Math.max(s.df1, s.df2, 1)} />
             <BreakdownRow label="Wide" v1={s.dfLoc1['wide'] ?? 0} v2={s.dfLoc2['wide'] ?? 0} max={Math.max(s.df1, s.df2, 1)} />
+            {(() => { const nr1 = s.df1 - (s.dfLoc1['T'] ?? 0) - (s.dfLoc1['body'] ?? 0) - (s.dfLoc1['wide'] ?? 0); const nr2 = s.df2 - (s.dfLoc2['T'] ?? 0) - (s.dfLoc2['body'] ?? 0) - (s.dfLoc2['wide'] ?? 0); return (nr1 > 0 || nr2 > 0) ? <BreakdownRow label="Not recorded" v1={nr1} v2={nr2} max={Math.max(s.df1, s.df2, 1)} muted /> : null })()}
           </CardContent>
         </Card>
       )}
@@ -438,11 +441,11 @@ function Divider({ label }: { label: string }) {
   )
 }
 
-function BreakdownRow({ label, v1, v2, max }: { label: string; v1: number; v2: number; max: number }) {
+function BreakdownRow({ label, v1, v2, max, muted }: { label: string; v1: number; v2: number; max: number; muted?: boolean }) {
   const pct1 = max > 0 ? (v1 / max) * 100 : 0
   const pct2 = max > 0 ? (v2 / max) * 100 : 0
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
+    <div className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs${muted ? ' opacity-50' : ''}`}>
       <div className="flex items-center justify-end gap-2">
         <span className="font-mono text-zinc-300 w-4 text-right">{v1}</span>
         <div className="h-2 rounded-full bg-blue-400/30 overflow-hidden" style={{ width: 60 }}>
