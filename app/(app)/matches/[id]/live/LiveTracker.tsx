@@ -779,22 +779,40 @@ function ErrorCourtDiagram({ onSelect }: { onSelect: (dir: 'long' | 'wide' | 'ne
         <circle cx={dblR + 4} cy={netY} r="3" fill="white" />
         <line x1={midX} y1={netY - 4} x2={midX} y2={netY + 4} stroke="white" strokeWidth="1.5" />
 
-        {/* Labels */}
-        <text x={midX} y={longY1 + 10} textAnchor="middle"
-          fill="white" fontSize="11" fontWeight="bold" fontFamily="system-ui, sans-serif"
+        {/* Zone overlays */}
+        <rect x={dblL} y={longY1} width={dblR - dblL} height={longY2 - longY1}
+          fill={pressed === 'long' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)'} style={{ pointerEvents: 'none' }} />
+        <rect x={dblL} y={baseTop} width={wideW} height={baseBot - baseTop}
+          fill={pressed === 'wide' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)'} style={{ pointerEvents: 'none' }} />
+        <rect x={sglR} y={baseTop} width={wideW} height={baseBot - baseTop}
+          fill={pressed === 'wide' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)'} style={{ pointerEvents: 'none' }} />
+        <rect x={sglL} y={netY1} width={sglR - sglL} height={netY2 - netY1}
+          fill={pressed === 'net' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)'} style={{ pointerEvents: 'none' }} />
+
+        {/* Labels — pill background + text */}
+        <rect x={midX - 22} y={longY1 + 2} width={44} height={16} rx="8"
+          fill="rgba(0,0,0,0.55)" style={{ pointerEvents: 'none' }} />
+        <text x={midX} y={longY1 + 14} textAnchor="middle"
+          fill="white" fontSize="12" fontWeight="bold" fontFamily="system-ui, sans-serif"
           style={{ pointerEvents: 'none' }}>LONG</text>
 
+        <rect x={dblL + wideW / 2 - 8} y={(baseTop + baseBot) / 2 - 22} width={16} height={44} rx="8"
+          fill="rgba(0,0,0,0.55)" style={{ pointerEvents: 'none' }} />
         <text x={dblL + wideW / 2} y={(baseTop + baseBot) / 2}
-          textAnchor="middle" fill="white" fontSize="9" fontWeight="bold"
+          textAnchor="middle" fill="white" fontSize="11" fontWeight="bold"
           fontFamily="system-ui, sans-serif" style={{ pointerEvents: 'none' }}
           transform={`rotate(-90, ${dblL + wideW / 2}, ${(baseTop + baseBot) / 2})`}>WIDE</text>
+        <rect x={sglR + wideW / 2 - 8} y={(baseTop + baseBot) / 2 - 22} width={16} height={44} rx="8"
+          fill="rgba(0,0,0,0.55)" style={{ pointerEvents: 'none' }} />
         <text x={sglR + wideW / 2} y={(baseTop + baseBot) / 2}
-          textAnchor="middle" fill="white" fontSize="9" fontWeight="bold"
+          textAnchor="middle" fill="white" fontSize="11" fontWeight="bold"
           fontFamily="system-ui, sans-serif" style={{ pointerEvents: 'none' }}
           transform={`rotate(90, ${sglR + wideW / 2}, ${(baseTop + baseBot) / 2})`}>WIDE</text>
 
-        <text x={midX} y={netY + 5} textAnchor="middle"
-          fill="white" fontSize="9" fontWeight="bold" fontFamily="system-ui, sans-serif"
+        <rect x={midX - 18} y={netY - 7} width={36} height={15} rx="7"
+          fill="rgba(0,0,0,0.55)" style={{ pointerEvents: 'none' }} />
+        <text x={midX} y={netY + 4} textAnchor="middle"
+          fill="white" fontSize="11" fontWeight="bold" fontFamily="system-ui, sans-serif"
           style={{ pointerEvents: 'none' }}>NET</text>
 
         <text x={midX} y={(baseTop + svcTop) / 2 + 5} textAnchor="middle"
