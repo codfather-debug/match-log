@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import Groq from 'groq-sdk'
 import { NextRequest, NextResponse } from 'next/server'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -26,12 +26,15 @@ Stats:
 - UE directions: ${p1} ${JSON.stringify(stats.ueDirs1)}, ${p2} ${JSON.stringify(stats.ueDirs2)}`
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
-    const result = await model.generateContent(prompt)
-    const text = result.response.text()
+    const completion = await client.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }],
+    })
+    const text = completion.choices[0].message.content ?? ''
     return NextResponse.json({ summary: text })
   } catch (e) {
-    console.error('Gemini error:', e)
+    console.error('Groq error:', e)
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 }
