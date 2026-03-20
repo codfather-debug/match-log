@@ -33,8 +33,10 @@ export default async function PlayersPage() {
             <Link key={player.id} href={`/players/${player.id}`}>
               <Card className="hover:border-zinc-700 transition-colors">
                 <CardContent className="flex items-center gap-3 p-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium">
-                    {player.name[0].toUpperCase()}
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium overflow-hidden">
+                    {player.avatar_url
+                      ? <img src={player.avatar_url} alt={player.name} className="h-full w-full object-cover" />
+                      : player.name[0].toUpperCase()}
                   </div>
                   <div className="flex-1">
                     <div className="text-sm font-medium">{player.name}</div>

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils'
 import { DeletePlayerButton } from './DeletePlayerButton'
+import { AvatarUpload } from './AvatarUpload'
 
 export default async function PlayerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -53,9 +54,12 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
       <Card className="border-zinc-800">
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-zinc-800 text-xl font-bold">
-              {player.name[0].toUpperCase()}
-            </div>
+            <AvatarUpload
+              playerId={player.id}
+              userId={user!.id}
+              playerName={player.name}
+              avatarUrl={player.avatar_url ?? null}
+            />
             <div>
               <p className="text-base font-semibold">{player.name}</p>
               <p className="text-sm text-zinc-400">
