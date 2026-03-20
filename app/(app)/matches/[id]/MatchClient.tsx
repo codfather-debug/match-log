@@ -119,8 +119,9 @@ export function MatchClient({ id, p1, p2, status, winner, matchType, createdAt, 
         body: JSON.stringify({ p1, p2, stats: s }),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'API error')
       setAiSummary(data.summary)
-    } catch { setAiSummary('Unable to generate summary.') }
+    } catch (e) { setAiSummary('Unable to generate summary: ' + (e instanceof Error ? e.message : String(e))) }
     setLoadingAI(false)
   }, [p1, p2, JSON.stringify(s)])
 

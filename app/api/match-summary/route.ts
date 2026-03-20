@@ -25,9 +25,13 @@ Stats:
 - Top UE strokes: ${p1} ${JSON.stringify(stats.ueStrokes1)}, ${p2} ${JSON.stringify(stats.ueStrokes2)}
 - UE directions: ${p1} ${JSON.stringify(stats.ueDirs1)}, ${p2} ${JSON.stringify(stats.ueDirs2)}`
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-  const result = await model.generateContent(prompt)
-  const text = result.response.text()
-
-  return NextResponse.json({ summary: text })
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' })
+    const result = await model.generateContent(prompt)
+    const text = result.response.text()
+    return NextResponse.json({ summary: text })
+  } catch (e) {
+    console.error('Gemini error:', e)
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
 }
