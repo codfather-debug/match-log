@@ -111,12 +111,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function back() {
-    if (step === 'shot_type') return setStep('point_winner')
-    if (step === 'point_winner') {
+    if (step === 'shot_type') {
       const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
-      return setStep(isError ? 'error_direction' : 'serve_result')
+      return setStep(isError ? 'error_direction' : 'point_winner')
     }
-    if (step === 'error_direction') return setStep('serve_result')
+    if (step === 'error_direction') return setStep('point_winner')
+    if (step === 'point_winner') return setStep('serve_result')
     if (step === 'serve_result') return setStep('serve_placement')
   }
 
@@ -485,8 +485,8 @@ function StepContent({
             }}
           />
           <ChoiceBtn label="Winner" accent="green" onClick={() => onGo('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'winner' as PointOutcome })} />
-          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('error_direction', { serve_result: 'in_play' as ServeResult, outcome: 'unforced_error' as PointOutcome })} />
-          <ChoiceBtn label="Forced Error" onClick={() => onGo('error_direction', { serve_result: 'in_play' as ServeResult, outcome: 'error' as PointOutcome })} />
+          <ChoiceBtn label="Unforced Error" accent="red" onClick={() => onGo('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'unforced_error' as PointOutcome })} />
+          <ChoiceBtn label="Forced Error" onClick={() => onGo('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'error' as PointOutcome })} />
           <ChoiceBtn
             label={faultLabel}
             accent="red"
@@ -526,14 +526,16 @@ function StepContent({
   if (step === 'error_direction') {
     return (
       <StepCard title="Where did it go?">
-        <ErrorCourtDiagram onSelect={(dir) => onGo('point_winner', { error_direction: dir })} />
+        <ErrorCourtDiagram onSelect={(dir) => onGo('shot_type', { error_direction: dir })} />
       </StepCard>
     )
   }
 
   if (step === 'point_winner') {
+    const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+    const nextStep: Step = isError ? 'error_direction' : 'shot_type'
     return (
-      <StepCard title={draft.outcome === 'winner' ? 'Who hit the winner?' : 'Who made the error?'}>
+      <StepCard title="Who won the point?">
         <div className="space-y-3">
           <div className="rounded-md border border-zinc-800 p-3 space-y-2">
             <p className="text-center text-xs text-zinc-500">Rally length (strokes)</p>
@@ -555,11 +557,11 @@ function StepContent({
             </div>
           </div>
           <Grid2>
-            <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team1' : 'team2', last_shot_player: 'player1' as PlayerSlot })} />
-            <ChoiceBtn label={p2Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team2' : 'team1', last_shot_player: 'player2' as PlayerSlot })} />
+            <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team1', last_shot_player: isError ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })} />
+            <ChoiceBtn label={p2Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team2', last_shot_player: isError ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })} />
             {isDoubles && <>
-              <ChoiceBtn label={p3Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team1' : 'team2', last_shot_player: 'player3' as PlayerSlot })} />
-              <ChoiceBtn label={p4Name} accent="green" onClick={() => onGo('shot_type', { point_winner: draft.outcome === 'winner' ? 'team2' : 'team1', last_shot_player: 'player4' as PlayerSlot })} />
+              <ChoiceBtn label={p3Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team1', last_shot_player: isError ? null : 'player3' as PlayerSlot })} />
+              <ChoiceBtn label={p4Name} accent="green" onClick={() => onGo(nextStep, { point_winner: 'team2', last_shot_player: isError ? null : 'player4' as PlayerSlot })} />
             </>}
           </Grid2>
         </div>
