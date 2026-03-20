@@ -46,13 +46,29 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   const df1 = allPoints.filter((p: Point) => p.outcome === 'double_fault' && p.server === 'player1').length
   const df2 = allPoints.filter((p: Point) => p.outcome === 'double_fault' && p.server === 'player2').length
 
-  const firstServe1 = allPoints.filter((p: Point) => (p.server === 'player1') && p.serve_number === 1)
-  const firstServeIn1 = firstServe1.filter((p: Point) => p.serve_result !== 'fault').length
-  const fs1pct = firstServe1.length ? Math.round((firstServeIn1 / firstServe1.length) * 100) : 0
+  // Serve % — faults aren't saved as separate DB rows; serve_number tells us which serve the point was played on.
+  // Total 1st serves = all points by that server (every point begins with a 1st serve attempt).
+  // 1st serves in = points where serve_number === 1.
+  const p1ServePts = allPoints.filter((p: Point) => p.server === 'player1')
+  const p2ServePts = allPoints.filter((p: Point) => p.server === 'player2')
+  const firstServeIn1 = p1ServePts.filter((p: Point) => p.serve_number === 1).length
+  const firstServeIn2 = p2ServePts.filter((p: Point) => p.serve_number === 1).length
+  const fs1pct = p1ServePts.length ? Math.round((firstServeIn1 / p1ServePts.length) * 100) : 0
+  const fs2pct = p2ServePts.length ? Math.round((firstServeIn2 / p2ServePts.length) * 100) : 0
 
-  const firstServe2 = allPoints.filter((p: Point) => (p.server === 'player2') && p.serve_number === 1)
-  const firstServeIn2 = firstServe2.filter((p: Point) => p.serve_result !== 'fault').length
-  const fs2pct = firstServe2.length ? Math.round((firstServeIn2 / firstServe2.length) * 100) : 0
+  // Points won on serve
+  const fsWon1 = p1ServePts.filter((p: Point) => p.serve_number === 1 && p.point_winner === 'team1').length
+  const ssWon1 = p1ServePts.filter((p: Point) => p.serve_number === 2 && p.point_winner === 'team1').length
+  const fsWon2 = p2ServePts.filter((p: Point) => p.serve_number === 1 && p.point_winner === 'team2').length
+  const ssWon2 = p2ServePts.filter((p: Point) => p.serve_number === 2 && p.point_winner === 'team2').length
+  const ssTotal1 = p1ServePts.filter((p: Point) => p.serve_number === 2).length
+  const ssTotal2 = p2ServePts.filter((p: Point) => p.serve_number === 2).length
+
+  // Return points won (player returning = the non-server)
+  const fsRetWon1 = p2ServePts.filter((p: Point) => p.serve_number === 1 && p.point_winner === 'team1').length
+  const ssRetWon1 = p2ServePts.filter((p: Point) => p.serve_number === 2 && p.point_winner === 'team1').length
+  const fsRetWon2 = p1ServePts.filter((p: Point) => p.serve_number === 1 && p.point_winner === 'team2').length
+  const ssRetWon2 = p1ServePts.filter((p: Point) => p.serve_number === 2 && p.point_winner === 'team2').length
 
   const avgRally = allPoints.length
     ? (allPoints.reduce((s: number, p: Point) => s + (p.rally_length ?? 0), 0) / allPoints.length).toFixed(1)
@@ -142,6 +158,10 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
           <StatRow label="Winners" v1={winners1} v2={winners2} />
           <StatRow label="Unforced errors" v1={ue1} v2={ue2} lower />
           <StatRow label="1st serve %" v1={`${fs1pct}%`} v2={`${fs2pct}%`} />
+          <StatRow label="1st serve won" v1={`${fsWon1}/${firstServeIn1}`} v2={`${fsWon2}/${firstServeIn2}`} />
+          <StatRow label="2nd serve won" v1={`${ssWon1}/${ssTotal1}`} v2={`${ssWon2}/${ssTotal2}`} />
+          <StatRow label="1st return won" v1={`${fsRetWon1}/${firstServeIn2}`} v2={`${fsRetWon2}/${firstServeIn1}`} />
+          <StatRow label="2nd return won" v1={`${ssRetWon1}/${ssTotal2}`} v2={`${ssRetWon2}/${ssTotal1}`} />
           <div className="flex items-center justify-center gap-2 pt-1 text-xs text-zinc-500">
             <span>Avg rally: <span className="text-zinc-300">{avgRally} shots</span></span>
             <span>·</span>
@@ -155,8 +175,8 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-zinc-400">Point log</h2>
           <div className="space-y-1">
-            {[...allPoints].reverse().map((pt: Point, i: number) => (
-              <PointRow key={pt.id} point={pt} index={allPoints.length - i} />
+            {allPoints.map((pt: Point, i: number) => (
+              <PointRow key={pt.id} point={pt} index={i + 1} />
             ))}
           </div>
         </div>
@@ -282,7 +302,7 @@ function PointRow({ point, index }: { point: Point; index: number }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-zinc-800/50 px-3 py-2 text-xs">
       <span className="w-5 text-zinc-600">#{index}</span>
-      <span className="text-zinc-500">{point.serve_number}st</span>
+      <span className="text-zinc-500">{point.serve_number === 1 ? '1st' : '2nd'}</span>
       {point.outcome && (
         <Badge variant={point.outcome === 'winner' || point.outcome === 'ace' ? 'success' : point.outcome === 'unforced_error' || point.outcome === 'error' ? 'destructive' : 'default'} className="text-xs">
           {outcomeLabel[point.outcome] ?? point.outcome}

@@ -107,7 +107,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function back() {
-    const stepOrder: Step[] = ['serve_placement', 'serve_result', 'outcome', 'shot_type', 'error_direction', 'confirm']
+    const stepOrder: Step[] = ['serve_placement', 'serve_result', 'outcome', 'shot_type', 'error_direction', 'point_winner', 'confirm']
     const idx = stepOrder.indexOf(step)
     if (idx > 0) setStep(stepOrder[idx - 1])
   }
@@ -322,8 +322,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
         <div className="space-y-3">
           {step !== 'serve_placement' && (
-            <button onClick={back} className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300">
-              <ChevronLeft className="h-3.5 w-3.5" />
+            <button onClick={back} className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all">
+              <ChevronLeft className="h-4 w-4" />
               Back
             </button>
           )}
