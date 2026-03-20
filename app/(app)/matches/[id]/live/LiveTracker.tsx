@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2, Share2 } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2, Share2, Mic, MicOff } from 'lucide-react'
 import Link from 'next/link'
 import {
   gameWinner,
@@ -268,6 +268,125 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     router.refresh()
   }
 
+  // ─── Voice commands ────────────────────────────────────────────────────────
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
+
+  function handleVoice(text: string) {
+    setVoiceTranscript(text)
+    setTimeout(() => setVoiceTranscript(null), 2500)
+
+    const NUMS: Record<string, number> = {
+      one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10,
+      eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
+      sixteen:16, seventeen:17, eighteen:18, nineteen:19, twenty:20,
+    }
+    const toNum = (s: string): number | null => {
+      if (NUMS[s] !== undefined) return NUMS[s]
+      const n = parseInt(s)
+      return isNaN(n) ? null : n
+    }
+
+    // Global commands
+    if (text === 'back' || text === 'go back') { back(); return }
+    if (text === 'undo') { undoLastPoint(); return }
+
+    // Server picker
+    if (!serverConfirmed) {
+      const slots: [string, PlayerSlot][] = [
+        [p1Name.split(' ')[0].toLowerCase(), 'player1'],
+        [p2Name.split(' ')[0].toLowerCase(), 'player2'],
+        ...(isDoubles ? [
+          [p3Name.split(' ')[0].toLowerCase(), 'player3'] as [string, PlayerSlot],
+          [p4Name.split(' ')[0].toLowerCase(), 'player4'] as [string, PlayerSlot],
+        ] : []),
+      ]
+      for (const [kw, slot] of slots) {
+        if (text.includes(kw)) {
+          supabase.from('games').update({ server: slot }).eq('id', game.id).then(() => {
+            setServerConfirmed(true)
+            router.refresh()
+          })
+          return
+        }
+      }
+      return
+    }
+
+    const isSecond = serveNumber === 2
+
+    if (step === 'serve_placement') {
+      if (text === 'first' || text === 'first serve') { setServeNumber(1); return }
+      if (text === 'second' || text === 'second serve') { setServeNumber(2); return }
+      if (text === 'wide') { go('serve_result', { serve_placement: 'wide' }); return }
+      if (text === 'body') { go('serve_result', { serve_placement: 'body' }); return }
+      if (text === 't' || text === 'tee') { go('serve_result', { serve_placement: 'T' }); return }
+      if (text === 'fault' && !isSecond) { handleFault(); return }
+      if (text === 'double fault' || (text === 'fault' && isSecond)) {
+        const ot: Team = teamOfPlayer(server) === 'team1' ? 'team2' : 'team1'
+        savePoint({ ...draft, serve_result: 'double_fault' as ServeResult, outcome: 'double_fault' as PointOutcome, point_winner: ot, rally_length: 0, last_shot_type: 'serve' as ShotType })
+        return
+      }
+    }
+
+    if (step === 'serve_result') {
+      if (text === 'ace') {
+        savePoint({ ...draft, serve_result: 'ace' as ServeResult, outcome: 'ace' as PointOutcome, point_winner: teamOfPlayer(server) as Team, rally_length: 1, last_shot_type: 'serve' as ShotType })
+        return
+      }
+      if (text === 'winner') { go('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'winner' as PointOutcome }); return }
+      if (text.includes('unforced')) { go('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'unforced_error' as PointOutcome }); return }
+      if (text.includes('forced')) { go('point_winner', { serve_result: 'in_play' as ServeResult, outcome: 'error' as PointOutcome }); return }
+      if (text === 'fault') {
+        if (isSecond) {
+          const ot: Team = teamOfPlayer(server) === 'team1' ? 'team2' : 'team1'
+          savePoint({ ...draft, serve_result: 'double_fault' as ServeResult, outcome: 'double_fault' as PointOutcome, point_winner: ot, rally_length: 0, last_shot_type: 'serve' as ShotType })
+        } else { handleFault() }
+        return
+      }
+    }
+
+    if (step === 'point_winner') {
+      const isErr = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+      const p1kw = p1Name.split(' ')[0].toLowerCase()
+      const p2kw = p2Name.split(' ')[0].toLowerCase()
+      if (text.includes(p1kw) || text === 'player one' || text === 'one') {
+        go('rally_length', { point_winner: 'team1', last_shot_player: isErr ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })
+        return
+      }
+      if (text.includes(p2kw) || text === 'player two' || text === 'two') {
+        go('rally_length', { point_winner: 'team2', last_shot_player: isErr ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })
+        return
+      }
+    }
+
+    if (step === 'rally_length') {
+      const isErr = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+      const nextSt: Step = isErr ? 'error_direction' : 'shot_type'
+      if (text === 'skip' || text === 'next') { go(nextSt, { rally_length: draft.rally_length || 0 }); return }
+      const n = toNum(text)
+      if (n !== null) { setDraft(d => ({ ...d, rally_length: n })); return }
+    }
+
+    if (step === 'error_direction') {
+      if (text === 'long') { go('shot_type', { error_direction: 'long' }); return }
+      if (text === 'wide') { go('shot_type', { error_direction: 'wide' }); return }
+      if (text === 'net') { go('shot_type', { error_direction: 'net' }); return }
+    }
+
+    if (step === 'shot_type') {
+      const save = (t: ShotType) => savePoint({ ...draft, last_shot_type: t })
+      if (text === 'forehand' || text === 'fh') { save('forehand'); return }
+      if (text === 'backhand' || text === 'bh') { save('backhand'); return }
+      if (text === 'return') { save('return'); return }
+      if (text.includes('volley')) { save(text.includes('back') ? 'backhand_volley' : 'forehand_volley'); return }
+      if (text === 'overhead' || text === 'smash') { save('overhead'); return }
+      if (text === 'lob') { save('lob'); return }
+      if (text.includes('drop')) { save('drop_shot'); return }
+    }
+  }
+
+  const { listening, toggle: toggleVoice } = useVoiceRecognition(handleVoice)
+
   return (
     <div className="flex min-h-dvh flex-col bg-zinc-950">
       {/* Header */}
@@ -279,6 +398,13 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             </Link>
             <span className="text-xs font-medium text-zinc-400">Match Log</span>
             <div className="flex items-center gap-3">
+              <button
+                onClick={toggleVoice}
+                title={listening ? 'Stop voice logging' : 'Start voice logging'}
+                className={`flex items-center gap-1 text-xs transition-colors ${listening ? 'text-red-400 animate-pulse' : 'text-zinc-400 hover:text-zinc-100'}`}
+              >
+                {listening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+              </button>
               <button
                 onClick={() => {
                   const url = `${window.location.origin}/matches/${match.id}/spectate`
@@ -402,6 +528,16 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
           </CardContent>
         </Card>
       </div>
+
+      {/* Voice transcript pill */}
+      {voiceTranscript && (
+        <div className="mx-auto w-full max-w-md px-4 pt-2">
+          <div className="flex items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+            <Mic className="h-3 w-3 text-red-400" />
+            <span className="italic">"{voiceTranscript}"</span>
+          </div>
+        </div>
+      )}
 
       {/* Step logger */}
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
@@ -972,6 +1108,46 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
       <span className={highlight ? 'font-semibold text-white' : 'text-zinc-200'}>{value}</span>
     </div>
   )
+}
+
+// ─── Voice recognition hook ──────────────────────────────────────────────────
+
+function useVoiceRecognition(onResult: (text: string) => void) {
+  const [listening, setListening] = useState(false)
+  const recogRef = useRef<{ stop: () => void } | null>(null)
+  const cbRef = useRef(onResult)
+  useEffect(() => { cbRef.current = onResult })
+
+  function toggle() {
+    if (listening) {
+      recogRef.current?.stop()
+      setListening(false)
+      return
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+    if (!SR) {
+      alert('Voice recognition is not supported in this browser. Try Chrome.')
+      return
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = new SR() as any
+    r.continuous = true
+    r.interimResults = false
+    r.lang = 'en-US'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    r.onresult = (e: any) => {
+      const text: string = e.results[e.results.length - 1][0].transcript.trim().toLowerCase()
+      cbRef.current(text)
+    }
+    r.onerror = () => setListening(false)
+    r.onend = () => setListening(false)
+    r.start()
+    recogRef.current = r
+    setListening(true)
+  }
+
+  return { listening, toggle }
 }
 
 function MiniPointRow({ point }: { point: Point }) {
