@@ -107,6 +107,34 @@ export default function NewMatchPage() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
+    // Fetch weather silently — never blocks match creation
+    let weather = null
+    try {
+      const pos = await new Promise<GeolocationPosition>((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 })
+      )
+      const { latitude: lat, longitude: lon } = pos.coords
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m` +
+        `&wind_speed_unit=mph&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto`
+      const data = await (await fetch(url)).json()
+      const c = data.current
+      const WMO: Record<number, string> = {
+        0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
+        45:'Fog',48:'Icy fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
+        61:'Light rain',63:'Rain',65:'Heavy rain',71:'Light snow',73:'Snow',75:'Heavy snow',
+        80:'Rain showers',81:'Heavy showers',82:'Violent showers',95:'Thunderstorm',
+      }
+      weather = {
+        temp: Math.round(c.temperature_2m),
+        feels_like: Math.round(c.apparent_temperature),
+        wind_mph: Math.round(c.wind_speed_10m),
+        gust_mph: Math.round(c.wind_gusts_10m),
+        precip_in: c.precipitation,
+        condition: WMO[c.weather_code] ?? 'Unknown',
+      }
+    } catch { /* geolocation denied or fetch failed — no weather */ }
+
     const { data: match, error: matchErr } = await supabase
       .from('matches')
       .insert({
@@ -119,6 +147,7 @@ export default function NewMatchPage() {
         player3_id: matchType === 'doubles' ? player3 : null,
         player4_id: matchType === 'doubles' ? player4 : null,
         started_at: new Date().toISOString(),
+        weather,
       })
       .select()
       .single()

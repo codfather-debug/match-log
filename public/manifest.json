@@ -1,0 +1,14 @@
+{
+  "name": "Match Log",
+  "short_name": "Match Log",
+  "description": "Track every point of your tennis match",
+  "start_url": "/matches",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" }
+  ]
+}
