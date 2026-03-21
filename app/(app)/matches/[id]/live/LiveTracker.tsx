@@ -529,11 +529,23 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
         </Card>
       </div>
 
-      {/* Voice transcript pill */}
-      {voiceTranscript && (
+      {/* Voice UI */}
+      {listening && (
+        <div className="mx-auto w-full max-w-md px-4 pt-2 space-y-2">
+          {/* Transcript pill */}
+          <div className="flex items-center justify-center gap-1.5 rounded-full border border-red-800/50 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+            <Mic className="h-3 w-3 text-red-400 animate-pulse" />
+            <span className="italic">{voiceTranscript ? `"${voiceTranscript}"` : 'Listening…'}</span>
+          </div>
+
+          {/* Step-scoped cheat sheet */}
+          <VoiceHints step={!serverConfirmed ? 'server' : step} p1={p1Name} p2={p2Name} />
+        </div>
+      )}
+      {!listening && voiceTranscript && (
         <div className="mx-auto w-full max-w-md px-4 pt-2">
           <div className="flex items-center justify-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
-            <Mic className="h-3 w-3 text-red-400" />
+            <Mic className="h-3 w-3 text-zinc-600" />
             <span className="italic">"{voiceTranscript}"</span>
           </div>
         </div>
@@ -1106,6 +1118,37 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
     <div className="flex items-center justify-between">
       <span className="text-zinc-500">{label}</span>
       <span className={highlight ? 'font-semibold text-white' : 'text-zinc-200'}>{value}</span>
+    </div>
+  )
+}
+
+// ─── Voice cheat sheet ───────────────────────────────────────────────────────
+
+const VOICE_HINTS: Record<string, { label: string; cmds: string[] }> = {
+  server:          { label: 'Who is serving?', cmds: ['Say the player\'s first name'] },
+  serve_placement: { label: 'Serve placement', cmds: ['"wide"', '"body"', '"T"', '"fault"', '"double fault"', '"first serve" / "second serve"'] },
+  serve_result:    { label: 'Serve result', cmds: ['"ace"', '"winner"', '"forced"', '"unforced"', '"fault"'] },
+  point_winner:    { label: 'Who won?', cmds: ['Player\'s first name', '"one" / "two"'] },
+  rally_length:    { label: 'Rally length', cmds: ['Say a number — "three", "7"…', '"skip" or "next"'] },
+  error_direction: { label: 'Error direction', cmds: ['"long"', '"wide"', '"net"'] },
+  shot_type:       { label: 'Last shot', cmds: ['"forehand" / "backhand"', '"volley"', '"overhead"', '"lob"', '"drop"', '"return"'] },
+}
+
+function VoiceHints({ step, p1, p2 }: { step: string; p1: string; p2: string }) {
+  const hint = VOICE_HINTS[step]
+  if (!hint) return null
+  const cmds = step === 'server'
+    ? [`"${p1.split(' ')[0]}"`, `"${p2.split(' ')[0]}"`, '…']
+    : hint.cmds
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 space-y-1">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">{hint.label}</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+        {cmds.map((c, i) => (
+          <span key={i} className="text-xs text-zinc-300">{c}</span>
+        ))}
+      </div>
+      <p className="text-[10px] text-zinc-600">Global: "back" · "undo"</p>
     </div>
   )
 }
