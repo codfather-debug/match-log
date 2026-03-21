@@ -82,12 +82,60 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
     const gameMap: Record<string, { setNum: number; gameNum: number }> = {}
     sets.forEach(s => s.games.forEach(g => { gameMap[g.id] = { setNum: s.set_number, gameNum: g.game_number } }))
     const slotName = (slot: string) => slot === 'player1' ? p1 : slot === 'player2' ? p2 : slot === 'player3' ? (p3 ?? 'Opp 1') : (p4 ?? 'Opp 2')
-    const headers = ['#', 'Set', 'Game', 'Server', 'Serve', 'Placement', 'Outcome', 'Shot', 'Error Direction', 'Rally', 'Point Won By']
-    const rows = allPoints.map((pt, i) => {
-      const gm = gameMap[pt.game_id] ?? { setNum: '', gameNum: '' }
-      return [i + 1, gm.setNum, gm.gameNum, slotName(pt.server), pt.serve_number, pt.serve_placement ?? '', pt.outcome ?? '', pt.last_shot_type ?? '', pt.error_direction ?? '', pt.rally_length, pt.point_winner === 'team1' ? p1 : pt.point_winner === 'team2' ? p2 : '']
-    })
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const row = (cells: unknown[]) => cells.map(q).join(',')
+    const blank = ''
+
+    // ── Section 1: Point by point ──────────────────────────────────────────
+    const pointRows = [
+      row(['POINT BY POINT']),
+      row(['#', 'Set', 'Game', 'Server', 'Serve #', 'Placement', 'Outcome', 'Shot', 'Error Direction', 'Rally Length', 'Point Won By', 'Score Before']),
+      ...allPoints.map((pt, i) => {
+        const gm = gameMap[pt.game_id] ?? { setNum: '', gameNum: '' }
+        const score = pt.score_before ? `${(pt.score_before as {team1:string}).team1}-${(pt.score_before as {team2:string}).team2}` : ''
+        return row([i + 1, gm.setNum, gm.gameNum, slotName(pt.server), pt.serve_number, pt.serve_placement ?? '', pt.outcome ?? '', pt.last_shot_type ?? '', pt.error_direction ?? '', pt.rally_length ?? '', pt.point_winner === 'team1' ? p1 : pt.point_winner === 'team2' ? p2 : '', score])
+      }),
+    ]
+
+    // ── Section 2: Point flow (cumulative, for charting) ───────────────────
+    let c1 = 0, c2 = 0
+    const flowRows = [
+      blank,
+      row(['POINT FLOW']),
+      row(['Point #', `${p1} (cumulative)`, `${p2} (cumulative)`]),
+      ...allPoints.map((pt, i) => {
+        if (pt.point_winner === 'team1') c1++
+        else if (pt.point_winner === 'team2') c2++
+        return row([i + 1, c1, c2])
+      }),
+    ]
+
+    // ── Section 3: Match stats ─────────────────────────────────────────────
+    const st = computeStats(allPoints)
+    const pct = (n: number, d: number) => d ? `${Math.round((n / d) * 100)}%` : '—'
+    const statsRows = [
+      blank,
+      row(['MATCH STATS', p1, p2]),
+      row(['Total Points Won', st.team1Points, st.team2Points]),
+      blank,
+      row(['SERVE']),
+      row(['1st Serve %', `${st.fs1pct}%`, `${st.fs2pct}%`]),
+      row(['1st Serve Points Won', `${st.fsWon1}/${st.fs1In}`, `${st.fsWon2}/${st.fs2In}`]),
+      row(['2nd Serve Points Won', `${st.ssWon1}/${st.ss1Total}`, `${st.ssWon2}/${st.ss2Total}`]),
+      row(['Aces', st.aces1, st.aces2]),
+      row(['Double Faults', st.df1, st.df2]),
+      blank,
+      row(['RALLY']),
+      row(['Winners', st.winners1, st.winners2]),
+      row(['Unforced Errors', st.ue1, st.ue2]),
+      row(['Avg Rally Length', st.avgRally, st.avgRally]),
+      blank,
+      row(['RETURN']),
+      row(['1st Serve Return %', pct(st.retSucc1by1, st.retTotal1by1), pct(st.retSucc2by1, st.retTotal2by1)]),
+      row(['2nd Serve Return %', pct(st.retSucc1by2, st.retTotal1by2), pct(st.retSucc2by2, st.retTotal2by2)]),
+    ]
+
+    const csv = [...pointRows, ...flowRows, ...statsRows].join('\n')
     const matchLabel = `${p1}_vs_${p2}_${formatDate(createdAt)}`.replace(/\s+/g, '_')
     const blob = new Blob([csv], { type: 'text/csv' })
     const file = new File([blob], `${matchLabel}.csv`, { type: 'text/csv' })
