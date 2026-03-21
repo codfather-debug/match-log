@@ -23,6 +23,7 @@ export default function NewMatchPage() {
   const [tiebreak, setTiebreak] = useState(true)
   const [superTiebreak, setSuperTiebreak] = useState(false)
   const [noAd, setNoAd] = useState(false)
+  const [surface, setSurface] = useState<string>('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -148,6 +149,7 @@ export default function NewMatchPage() {
         player4_id: matchType === 'doubles' ? player4 : null,
         started_at: new Date().toISOString(),
         weather,
+        surface: surface || null,
       })
       .select()
       .single()
@@ -208,6 +210,27 @@ export default function NewMatchPage() {
                 }`}
               >
                 {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Court surface */}
+        <div className="space-y-1.5">
+          <Label>Court surface</Label>
+          <div className="flex gap-2 flex-wrap">
+            {(['Hard', 'Clay', 'Grass', 'Indoor'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSurface(prev => prev === s ? '' : s)}
+                className={`rounded-md border px-4 py-2 text-sm transition-colors ${
+                  surface === s
+                    ? 'border-zinc-100 bg-zinc-800 text-zinc-100'
+                    : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                }`}
+              >
+                {s}
               </button>
             ))}
           </div>

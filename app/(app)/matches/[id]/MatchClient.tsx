@@ -29,11 +29,13 @@ type Props = {
   status: string; winner: string | null
   matchType: string; createdAt: string; sets: SetRow[]
   notes?: string | null; weather?: WeatherSnapshot
+  surface?: string | null
+  rating?: number | null
 }
 
-type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns'
+type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns' | 'tiebreaks'
 
-export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets, notes, weather }: Props) {
+export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets, notes, weather, surface, rating: initialRating }: Props) {
   const isDoubles = matchType === 'doubles'
   const router = useRouter()
   const [activeSet, setActiveSet] = useState<'all' | number>('all')
@@ -43,6 +45,27 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [loadingAI, setLoadingAI] = useState(false)
   const [notesValue, setNotesValue] = useState(notes ?? '')
+  const [matchRating, setMatchRating] = useState<number | null>(initialRating ?? null)
+  const [editingPoint, setEditingPoint] = useState<Point | null>(null)
+  const [editDraft, setEditDraft] = useState<Partial<Point>>({})
+  const [editSaving, setEditSaving] = useState(false)
+
+  async function handleRating(r: number) {
+    const newRating = matchRating === r ? null : r
+    setMatchRating(newRating)
+    const supabase = createClient()
+    await supabase.from('matches').update({ rating: newRating }).eq('id', id)
+  }
+
+  async function saveEditedPoint() {
+    if (!editingPoint) return
+    setEditSaving(true)
+    const supabase = createClient()
+    await supabase.from('points').update(editDraft).eq('id', editingPoint.id)
+    setEditSaving(false)
+    setEditingPoint(null)
+    router.refresh()
+  }
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -57,7 +80,7 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
     ? allPoints
     : (sets.find(s => s.set_number === activeSet)?.games.flatMap(g => g.points ?? []) ?? [])
 
-  const s = computeStats(filteredPoints)
+  const s = computeStats(filteredPoints, sets.flatMap(s => s.games))
 
   const t1Sets = sets.filter(s => s.winner === 'team1').length
   const t2Sets = sets.filter(s => s.winner === 'team2').length
@@ -169,6 +192,7 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
     { id: 'winners', label: 'Winners' },
     { id: 'ue', label: 'UErrors' },
     { id: 'returns', label: 'Returns' },
+    { id: 'tiebreaks', label: 'Tiebreaks' },
   ]
 
   return (
@@ -183,6 +207,76 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
               <Button variant="outline" className="flex-1" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</Button>
               <Button variant="destructive" className="flex-1" onClick={handleDelete} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete'}</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {editingPoint && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 pb-4">
+          <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Edit point #{editingPoint.point_number}</h2>
+              <button onClick={() => setEditingPoint(null)} className="text-zinc-500 hover:text-zinc-200 text-xs">Cancel</button>
+            </div>
+            <div className="space-y-3 text-sm">
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">Point winner</p>
+                <div className="flex gap-2">
+                  {(['team1', 'team2'] as const).map(t => (
+                    <button key={t} onClick={() => setEditDraft(d => ({ ...d, point_winner: t }))}
+                      className={`flex-1 rounded-md border py-2 text-xs transition-colors ${(editDraft.point_winner ?? editingPoint.point_winner) === t ? 'border-white bg-zinc-700' : 'border-zinc-700 text-zinc-400'}`}>
+                      {t === 'team1' ? p1 : p2}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">Outcome</p>
+                <select
+                  value={editDraft.outcome ?? editingPoint.outcome ?? ''}
+                  onChange={e => setEditDraft(d => ({ ...d, outcome: e.target.value as Point['outcome'] }))}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200"
+                >
+                  <option value="winner">Winner</option>
+                  <option value="unforced_error">Unforced Error</option>
+                  <option value="error">Forced Error</option>
+                  <option value="ace">Ace</option>
+                  <option value="double_fault">Double Fault</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">Last shot</p>
+                <select
+                  value={editDraft.last_shot_type ?? editingPoint.last_shot_type ?? ''}
+                  onChange={e => setEditDraft(d => ({ ...d, last_shot_type: e.target.value as Point['last_shot_type'] }))}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200"
+                >
+                  <option value="">—</option>
+                  <option value="forehand">Forehand</option>
+                  <option value="backhand">Backhand</option>
+                  <option value="return">Return</option>
+                  <option value="forehand_volley">FH Volley</option>
+                  <option value="backhand_volley">BH Volley</option>
+                  <option value="overhead">Overhead</option>
+                  <option value="lob">Lob</option>
+                  <option value="drop_shot">Drop Shot</option>
+                  <option value="serve">Serve</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">Rally length</p>
+                <input
+                  type="number"
+                  min={0}
+                  value={editDraft.rally_length ?? editingPoint.rally_length ?? 0}
+                  onChange={e => setEditDraft(d => ({ ...d, rally_length: parseInt(e.target.value) || 0 }))}
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200"
+                />
+              </div>
+            </div>
+            <Button className="w-full" size="sm" onClick={saveEditedPoint} disabled={editSaving}>
+              {editSaving ? 'Saving…' : 'Save changes'}
+            </Button>
           </div>
         </div>
       )}
@@ -228,6 +322,14 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
         </div>
       )}
 
+      {(surface || matchRating) && (
+        <div className="flex items-center gap-3 text-xs text-zinc-500 -mt-3">
+          {surface && <span>{surface}</span>}
+          {surface && matchRating && <span>·</span>}
+          {matchRating && <span>{'★'.repeat(matchRating)}{'☆'.repeat(5 - matchRating)}</span>}
+        </div>
+      )}
+
       {/* Match score */}
       <Card className="border-zinc-800">
         <CardContent className="p-4">
@@ -243,6 +345,20 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
               <p className="mt-0.5 font-mono text-4xl font-bold">{t2Sets}</p>
             </div>
           </div>
+          {status === 'completed' && (
+            <div className="mt-3 flex items-center justify-center gap-1">
+              {[1,2,3,4,5].map(star => (
+                <button
+                  key={star}
+                  onClick={() => handleRating(star)}
+                  className={`text-xl transition-colors ${star <= (matchRating ?? 0) ? 'text-yellow-400' : 'text-zinc-700 hover:text-yellow-400/50'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+          )}
+
           {sets.length > 0 && (
             <div className="mt-3 flex items-center justify-center gap-4 text-xs text-zinc-500">
               {sets.map(set => (
@@ -365,6 +481,9 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
             <BreakdownRow label="Body" v1={s.svcLoc1by2['body'] ?? 0} v2={s.svcLoc2by2['body'] ?? 0} max={s.ss1Total || 1} />
             <BreakdownRow label="Wide" v1={s.svcLoc1by2['wide'] ?? 0} v2={s.svcLoc2by2['wide'] ?? 0} max={s.ss1Total || 1} />
             {(() => { const nr1 = s.ss1Total - (s.svcLoc1by2['T'] ?? 0) - (s.svcLoc1by2['body'] ?? 0) - (s.svcLoc1by2['wide'] ?? 0); const nr2 = s.ss2Total - (s.svcLoc2by2['T'] ?? 0) - (s.svcLoc2by2['body'] ?? 0) - (s.svcLoc2by2['wide'] ?? 0); return (nr1 > 0 || nr2 > 0) ? <BreakdownRow label="Not recorded" v1={nr1} v2={nr2} max={s.ss1Total || 1} muted /> : null })()}
+            <Divider label={`${p1} serve heatmap`} />
+            <ServeHeatmap title="1st serve" locData={s.svcLoc1by1} wonData={s.svcWinLoc1by1} total={s.fs1In} />
+            <ServeHeatmap title="2nd serve" locData={s.svcLoc1by2} wonData={s.svcWinLoc1by2} total={s.ss1Total} />
           </CardContent>
         </Card>
       )}
@@ -472,6 +591,24 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
         </Card>
       )}
 
+      {activeTab === 'tiebreaks' && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Tiebreak performance</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {s.tbPoints === 0 ? (
+              <p className="text-xs text-zinc-500">No tiebreaks in this match.</p>
+            ) : (
+              <>
+                <TwoColHeader p1={p1} p2={p2} />
+                <StatRow label="TB points won" v1={s.tbWon1} v2={s.tbWon2} />
+                <StatRow label="TB win %" v1={s.tbPct1 !== null ? `${s.tbPct1}%` : '—'} v2={s.tbPct2 !== null ? `${s.tbPct2}%` : '—'} />
+                <StatRow label="Total TB points" v1={s.tbPoints} v2={s.tbPoints} />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Notes */}
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-zinc-500">Match notes</p>
@@ -489,7 +626,7 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-zinc-400">Point log</h2>
           <div className="space-y-1">
-            {filteredPoints.map((pt, i) => <PointRow key={pt.id} point={pt} index={i + 1} />)}
+            {filteredPoints.map((pt, i) => <PointRow key={pt.id} point={pt} index={i + 1} onEdit={() => { setEditingPoint(pt); setEditDraft({}) }} />)}
           </div>
         </div>
       )}
@@ -601,14 +738,14 @@ function StatRow({ label, v1, v2, lower }: { label: string; v1: string | number;
   )
 }
 
-function PointRow({ point, index }: { point: Point; index: number }) {
+function PointRow({ point, index, onEdit }: { point: Point; index: number; onEdit?: () => void }) {
   const outcomeLabel: Record<string, string> = { ace: 'Ace', winner: 'Winner', error: 'Error', unforced_error: 'UE', double_fault: 'DF' }
   const shotLabel: Record<string, string> = {
     forehand: 'FH', backhand: 'BH', forehand_volley: 'FH Vol', backhand_volley: 'BH Vol',
     overhead: 'OH', lob: 'Lob', drop_shot: 'Drop', serve: 'Serve', return: 'Ret',
   }
   return (
-    <div className="flex items-center gap-2 rounded-md border border-zinc-800/50 px-3 py-2 text-xs">
+    <div onClick={onEdit} className="flex items-center gap-2 rounded-md border border-zinc-800/50 px-3 py-2 text-xs cursor-pointer hover:border-zinc-700">
       <span className="w-5 text-zinc-600">#{index}</span>
       <span className="text-zinc-500">{point.serve_number === 1 ? '1st' : '2nd'}</span>
       {point.outcome && (
@@ -618,10 +755,46 @@ function PointRow({ point, index }: { point: Point; index: number }) {
       )}
       {point.last_shot_type && <span className="text-zinc-400">{shotLabel[point.last_shot_type] ?? point.last_shot_type}</span>}
       {point.error_direction && <span className="text-zinc-500">· {point.error_direction}</span>}
+      {point.winner_direction && <span className="text-zinc-500">· {point.winner_direction === 'cross_court' ? 'CC' : 'DTL'}</span>}
       <span className="ml-auto text-zinc-600">{point.rally_length}x</span>
       <span className={`font-medium ${point.point_winner === 'team1' ? 'text-white' : 'text-zinc-400'}`}>
         {point.point_winner === 'team1' ? 'P1' : 'P2'}
       </span>
+    </div>
+  )
+}
+
+function ServeHeatmap({ title, locData, wonData, total }: {
+  title: string
+  locData: Record<string, number>
+  wonData: Record<string, number>
+  total: number
+}) {
+  if (total === 0) return null
+  const zones: { key: string; label: string }[] = [
+    { key: 'T', label: 'T' },
+    { key: 'body', label: 'Body' },
+    { key: 'wide', label: 'Wide' },
+  ]
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-zinc-500 font-medium">{title}</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {zones.map(({ key, label }) => {
+          const count = locData[key] ?? 0
+          const won = wonData[key] ?? 0
+          const pct = count ? Math.round((won / count) * 100) : null
+          const intensity = pct !== null ? pct / 100 : 0
+          return (
+            <div key={key} className="rounded-md border border-zinc-800 p-2 text-center space-y-0.5"
+              style={{ background: `rgba(96,165,250,${intensity * 0.4})` }}>
+              <p className="text-xs font-semibold">{label}</p>
+              <p className="text-base font-bold font-mono">{count}</p>
+              <p className="text-[10px] text-zinc-400">{pct !== null ? `${pct}% won` : '—'}</p>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

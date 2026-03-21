@@ -49,6 +49,8 @@ export interface Match {
   player4_id: string | null
   winner: Team | null
   notes: string | null
+  surface: string | null
+  rating: number | null
   started_at: string | null
   completed_at: string | null
   created_at: string
@@ -100,6 +102,7 @@ export interface Point {
   last_shot_type: ShotType | null
   last_shot_player: PlayerSlot | null
   error_direction: ErrorDirection | null
+  winner_direction: 'cross_court' | 'down_the_line' | null
   court_side: CourtSide | null
   score_before: { team1: string; team2: string } | null
   created_at: string
@@ -135,4 +138,5 @@ export interface PointDraft {
   last_shot_type: ShotType | null
   last_shot_player: PlayerSlot | null
   error_direction: ErrorDirection | null
+  winner_direction: 'cross_court' | 'down_the_line' | null
 }

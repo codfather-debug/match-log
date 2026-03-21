@@ -33,7 +33,7 @@ import type {
   ShotType,
 } from '@/types/tennis'
 
-type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'rally_length' | 'confirm'
+type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'rally_length' | 'winner_direction' | 'confirm'
 
 const emptyDraft = (): PointDraft => ({
   serve_number: 1,
@@ -45,6 +45,7 @@ const emptyDraft = (): PointDraft => ({
   last_shot_type: null,
   last_shot_player: null,
   error_direction: null,
+  winner_direction: null,
 })
 
 export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { games: (Game & { points: Point[] })[] })[] } }) {
@@ -121,6 +122,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function back() {
+    if (step === 'winner_direction') return setStep('shot_type')
     if (step === 'shot_type') {
       const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
       return setStep(isError ? 'error_direction' : 'rally_length')
@@ -149,6 +151,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       last_shot_type: finalDraft.last_shot_type,
       last_shot_player: finalDraft.last_shot_player,
       error_direction: finalDraft.error_direction,
+      winner_direction: finalDraft.winner_direction,
       court_side: courtSide,
       score_before: { team1: t1label, team2: t2label },
     }
@@ -374,7 +377,9 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     }
 
     if (step === 'shot_type') {
-      const save = (t: ShotType) => savePoint({ ...draft, last_shot_type: t })
+      const save = (t: ShotType) => {
+        if (draft.outcome === 'winner') { go('winner_direction', { last_shot_type: t }) } else { savePoint({ ...draft, last_shot_type: t }) }
+      }
       if (text === 'forehand' || text === 'fh') { save('forehand'); return }
       if (text === 'backhand' || text === 'bh') { save('backhand'); return }
       if (text === 'return') { save('return'); return }
@@ -382,6 +387,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       if (text === 'overhead' || text === 'smash') { save('overhead'); return }
       if (text === 'lob') { save('lob'); return }
       if (text.includes('drop')) { save('drop_shot'); return }
+    }
+
+    if (step === 'winner_direction') {
+      if (text.includes('cross') || text === 'cc') { savePoint({ ...draft, winner_direction: 'cross_court' }); return }
+      if (text.includes('line') || text === 'dtl') { savePoint({ ...draft, winner_direction: 'down_the_line' }); return }
+      if (text === 'skip' || text === 'not sure') { savePoint({ ...draft, winner_direction: null }); return }
     }
   }
 
@@ -724,7 +735,13 @@ function StepContent({
   }
 
   if (step === 'shot_type') {
-    const save = (t: ShotType) => onSave({ ...draft, last_shot_type: t })
+    const save = (t: ShotType) => {
+      if (draft.outcome === 'winner') {
+        onGo('winner_direction', { last_shot_type: t })
+      } else {
+        onSave({ ...draft, last_shot_type: t })
+      }
+    }
     return (
       <StepCard title="Last shot">
         <div className="flex flex-col gap-2">
@@ -736,6 +753,18 @@ function StepContent({
           <ChoiceBtn label="Overhead" onClick={() => save('overhead')} />
           <ChoiceBtn label="Lob" onClick={() => save('lob')} />
           <ChoiceBtn label="Drop Shot" onClick={() => save('drop_shot')} />
+        </div>
+      </StepCard>
+    )
+  }
+
+  if (step === 'winner_direction') {
+    return (
+      <StepCard title="Shot direction">
+        <div className="flex flex-col gap-2">
+          <ChoiceBtn label="Cross-court" accent="green" onClick={() => onSave({ ...draft, winner_direction: 'cross_court' })} />
+          <ChoiceBtn label="Down the line" accent="green" onClick={() => onSave({ ...draft, winner_direction: 'down_the_line' })} />
+          <ChoiceBtn label="Not sure" onClick={() => onSave({ ...draft, winner_direction: null })} />
         </div>
       </StepCard>
     )
@@ -1132,6 +1161,7 @@ const VOICE_HINTS: Record<string, { label: string; cmds: string[] }> = {
   rally_length:    { label: 'Rally length', cmds: ['Say a number — "three", "7"…', '"skip" or "next"'] },
   error_direction: { label: 'Error direction', cmds: ['"long"', '"wide"', '"net"'] },
   shot_type:       { label: 'Last shot', cmds: ['"forehand" / "backhand"', '"volley"', '"overhead"', '"lob"', '"drop"', '"return"'] },
+  winner_direction: { label: 'Shot direction', cmds: ['"cross court"', '"down the line"', '"skip"'] },
 }
 
 function VoiceHints({ step, p1, p2 }: { step: string; p1: string; p2: string }) {

@@ -14,6 +14,7 @@ type MatchRow = {
   winner: string | null
   match_type: string
   created_at: string
+  surface?: string | null
   player1?: Player | null
   player2?: Player | null
   player3?: Player | null
@@ -25,21 +26,26 @@ type StatTab = 'all' | 'serves' | 'winners' | 'ue' | 'returns'
 
 export function StatsClient({ matches }: { matches: MatchRow[] }) {
   const [activeTab, setActiveTab] = useState<StatTab>('all')
+  const [surfaceFilter, setSurfaceFilter] = useState<string>('all')
 
-  const wins = matches.filter(m => m.winner === 'team1').length
-  const losses = matches.filter(m => m.winner === 'team2').length
-  const total = matches.length
+  const filteredMatches = useMemo(() =>
+    surfaceFilter === 'all' ? matches : matches.filter(m => m.surface === surfaceFilter)
+  , [matches, surfaceFilter])
+
+  const wins = filteredMatches.filter(m => m.winner === 'team1').length
+  const losses = filteredMatches.filter(m => m.winner === 'team2').length
+  const total = filteredMatches.length
 
   const allPoints = useMemo(() =>
-    matches.flatMap(m => m.sets.flatMap(s => s.games.flatMap(g => g.points ?? [])))
-  , [matches])
+    filteredMatches.flatMap(m => m.sets.flatMap(s => s.games.flatMap(g => g.points ?? [])))
+  , [filteredMatches])
 
   const s = useMemo(() => computeStats(allPoints), [allPoints])
 
   // Per-opponent records keyed by player id for H2H links
   const opponentRecords = useMemo(() => {
     const map: Record<string, { id: string; name: string; wins: number; losses: number }> = {}
-    for (const m of matches) {
+    for (const m of filteredMatches) {
       const oppId = m.player2?.id ?? 'unknown'
       const oppName = m.player2?.name ?? 'Unknown'
       if (!map[oppId]) map[oppId] = { id: oppId, name: oppName, wins: 0, losses: 0 }
@@ -51,8 +57,8 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
 
   // Recent form — last 10 completed matches
   const recentForm = useMemo(() =>
-    matches.filter(m => m.winner).slice(0, 10).map(m => m.winner === 'team1' ? 'W' : 'L')
-  , [matches])
+    filteredMatches.filter(m => m.winner).slice(0, 10).map(m => m.winner === 'team1' ? 'W' : 'L')
+  , [filteredMatches])
 
   const statTabs: { id: StatTab; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -75,6 +81,22 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">My Stats</h1>
 
+      {/* Surface filter */}
+      {(() => {
+        const surfaces = [...new Set(matches.map(m => m.surface).filter(Boolean))] as string[]
+        if (surfaces.length < 2) return null
+        return (
+          <div className="flex gap-2 flex-wrap">
+            {(['all', ...surfaces]).map(s => (
+              <button key={s} onClick={() => setSurfaceFilter(s)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${surfaceFilter === s ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
+                {s === 'all' ? 'All surfaces' : s}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
+
       {/* W/L Record */}
       <div className="grid grid-cols-3 gap-3">
         <RecordCard label="Wins" value={wins} color="text-emerald-400" />
@@ -94,6 +116,8 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
           </div>
         </div>
       )}
+
+      <WinTrendChart matches={filteredMatches} />
 
       {/* Stat tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -274,6 +298,41 @@ function Divider({ label }: { label: string }) {
       <div className="h-px flex-1 bg-zinc-800" />
       <span className="text-xs text-zinc-500">{label}</span>
       <div className="h-px flex-1 bg-zinc-800" />
+    </div>
+  )
+}
+
+function WinTrendChart({ matches }: { matches: { winner: string | null; created_at: string }[] }) {
+  const completed = [...matches].filter(m => m.winner).reverse().slice(-12)
+  if (completed.length < 3) return null
+  const W = 300, H = 60, pad = 8
+  // Running 5-match win rate
+  const rates = completed.map((_, i) => {
+    const window = completed.slice(Math.max(0, i - 4), i + 1)
+    return window.filter(m => m.winner === 'team1').length / window.length
+  })
+  const xStep = (W - pad * 2) / Math.max(rates.length - 1, 1)
+  const toY = (v: number) => pad + (1 - v) * (H - pad * 2)
+  const pts = rates.map((r, i) => `${pad + i * xStep},${toY(r)}`).join(' ')
+  const midY = toY(0.5)
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-zinc-500">Win rate trend (rolling 5)</p>
+      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+          <line x1={pad} y1={midY} x2={W - pad} y2={midY} stroke="#3f3f46" strokeWidth="1" strokeDasharray="3,3" />
+          <polyline points={pts} fill="none" stroke="#10b981" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+          {rates.map((r, i) => (
+            <circle key={i} cx={pad + i * xStep} cy={toY(r)} r="2.5"
+              fill={r >= 0.5 ? '#10b981' : '#f43f5e'} />
+          ))}
+        </svg>
+        <div className="flex justify-between text-[10px] text-zinc-600 px-1">
+          <span>older</span>
+          <span>50% line</span>
+          <span>recent</span>
+        </div>
+      </div>
     </div>
   )
 }

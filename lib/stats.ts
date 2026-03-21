@@ -8,7 +8,7 @@ export function byKey<T>(arr: T[], key: (x: T) => string | null | undefined) {
   return map
 }
 
-export function computeStats(points: Point[]) {
+export function computeStats(points: Point[], games?: { id: string; is_tiebreak: boolean }[]) {
   const p1 = points.filter(p => p.server === 'player1')
   const p2 = points.filter(p => p.server === 'player2')
   const fs1In = count(p1, p => p.serve_number === 1)
@@ -34,6 +34,11 @@ export function computeStats(points: Point[]) {
   const ret1by2 = ret1pts.filter(p => p.serve_number === 2)
   const ret2by1 = ret2pts.filter(p => p.serve_number === 1)
   const ret2by2 = ret2pts.filter(p => p.serve_number === 2)
+
+  const tbGameIds = games ? new Set(games.filter(g => g.is_tiebreak).map(g => g.id)) : null
+  const tbPoints = tbGameIds ? points.filter(p => tbGameIds.has(p.game_id)) : []
+  const tbWon1 = tbPoints.filter(p => p.point_winner === 'team1').length
+  const tbWon2 = tbPoints.filter(p => p.point_winner === 'team2').length
 
   return {
     team1Points: count(points, p => p.point_winner === 'team1'),
@@ -83,6 +88,15 @@ export function computeStats(points: Point[]) {
     retLocSucc1: byKey(ret1pts.filter(p => !isUnsuccessfulReturn(p)), p => p.serve_placement),
     retLocTotal2: byKey(ret2pts, p => p.serve_placement),
     retLocSucc2: byKey(ret2pts.filter(p => !isUnsuccessfulReturn(p)), p => p.serve_placement),
+    svcWinLoc1by1: byKey(p1.filter(p => p.serve_number === 1 && p.point_winner === 'team1'), p => p.serve_placement),
+    svcWinLoc1by2: byKey(p1.filter(p => p.serve_number === 2 && p.point_winner === 'team1'), p => p.serve_placement),
+    svcWinLoc2by1: byKey(p2.filter(p => p.serve_number === 1 && p.point_winner === 'team2'), p => p.serve_placement),
+    svcWinLoc2by2: byKey(p2.filter(p => p.serve_number === 2 && p.point_winner === 'team2'), p => p.serve_placement),
+    tbPoints: tbPoints.length,
+    tbWon1,
+    tbWon2,
+    tbPct1: tbPoints.length ? Math.round((tbWon1 / tbPoints.length) * 100) : null,
+    tbPct2: tbPoints.length ? Math.round((tbWon2 / tbPoints.length) * 100) : null,
   }
 }
 
