@@ -7,7 +7,7 @@ import { computeStats } from '@/lib/stats'
 import type { Point } from '@/types/tennis'
 
 type Player = { id: string; name: string }
-type GameRow = { id: string; points: Point[] }
+type GameRow = { id: string; is_tiebreak: boolean; points: Point[] }
 type SetRow = { id: string; winner: string | null; games: GameRow[] }
 type MatchRow = {
   id: string
@@ -40,7 +40,11 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
     filteredMatches.flatMap(m => m.sets.flatMap(s => s.games.flatMap(g => g.points ?? [])))
   , [filteredMatches])
 
-  const s = useMemo(() => computeStats(allPoints), [allPoints])
+  const allGames = useMemo(() =>
+    filteredMatches.flatMap(m => m.sets.flatMap(s => s.games))
+  , [filteredMatches])
+
+  const s = useMemo(() => computeStats(allPoints, allGames), [allPoints, allGames])
 
   // Per-opponent records keyed by player id for H2H links
   const opponentRecords = useMemo(() => {

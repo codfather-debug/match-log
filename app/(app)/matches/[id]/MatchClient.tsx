@@ -112,11 +112,12 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
     // ── Section 1: Point by point ──────────────────────────────────────────
     const pointRows = [
       row(['POINT BY POINT']),
-      row(['#', 'Set', 'Game', 'Server', 'Serve #', 'Placement', 'Outcome', 'Shot', 'Error Direction', 'Rally Length', 'Point Won By', 'Score Before']),
+      row(['#', 'Set', 'Game', 'Server', 'Serve #', 'Placement', 'Outcome', 'Shot', 'Error Direction', 'Winner Direction', 'Rally Length', 'Point Won By', 'Score Before']),
       ...allPoints.map((pt, i) => {
         const gm = gameMap[pt.game_id] ?? { setNum: '', gameNum: '' }
         const score = pt.score_before ? `${(pt.score_before as {team1:string}).team1}-${(pt.score_before as {team2:string}).team2}` : ''
-        return row([i + 1, gm.setNum, gm.gameNum, slotName(pt.server), pt.serve_number, pt.serve_placement ?? '', pt.outcome ?? '', pt.last_shot_type ?? '', pt.error_direction ?? '', pt.rally_length ?? '', pt.point_winner === 'team1' ? p1 : pt.point_winner === 'team2' ? p2 : '', score])
+        const winDir = pt.winner_direction === 'cross_court' ? 'CC' : pt.winner_direction === 'down_the_line' ? 'DTL' : ''
+        return row([i + 1, gm.setNum, gm.gameNum, slotName(pt.server), pt.serve_number, pt.serve_placement ?? '', pt.outcome ?? '', pt.last_shot_type ?? '', pt.error_direction ?? '', winDir, pt.rally_length ?? '', pt.point_winner === 'team1' ? p1 : pt.point_winner === 'team2' ? p2 : '', score])
       }),
     ]
 
@@ -481,9 +482,16 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
             <BreakdownRow label="Body" v1={s.svcLoc1by2['body'] ?? 0} v2={s.svcLoc2by2['body'] ?? 0} max={s.ss1Total || 1} />
             <BreakdownRow label="Wide" v1={s.svcLoc1by2['wide'] ?? 0} v2={s.svcLoc2by2['wide'] ?? 0} max={s.ss1Total || 1} />
             {(() => { const nr1 = s.ss1Total - (s.svcLoc1by2['T'] ?? 0) - (s.svcLoc1by2['body'] ?? 0) - (s.svcLoc1by2['wide'] ?? 0); const nr2 = s.ss2Total - (s.svcLoc2by2['T'] ?? 0) - (s.svcLoc2by2['body'] ?? 0) - (s.svcLoc2by2['wide'] ?? 0); return (nr1 > 0 || nr2 > 0) ? <BreakdownRow label="Not recorded" v1={nr1} v2={nr2} max={s.ss1Total || 1} muted /> : null })()}
-            <Divider label={`${p1} serve heatmap`} />
-            <ServeHeatmap title="1st serve" locData={s.svcLoc1by1} wonData={s.svcWinLoc1by1} total={s.fs1In} />
-            <ServeHeatmap title="2nd serve" locData={s.svcLoc1by2} wonData={s.svcWinLoc1by2} total={s.ss1Total} />
+            {s.p1Total > 0 && <>
+              <Divider label={`${p1} serve heatmap`} />
+              <ServeHeatmap title="1st serve" locData={s.svcLoc1by1} wonData={s.svcWinLoc1by1} total={s.fs1In} />
+              <ServeHeatmap title="2nd serve" locData={s.svcLoc1by2} wonData={s.svcWinLoc1by2} total={s.ss1Total} />
+            </>}
+            {s.p2Total > 0 && <>
+              <Divider label={`${p2} serve heatmap`} />
+              <ServeHeatmap title="1st serve" locData={s.svcLoc2by1} wonData={s.svcWinLoc2by1} total={s.fs2In} />
+              <ServeHeatmap title="2nd serve" locData={s.svcLoc2by2} wonData={s.svcWinLoc2by2} total={s.ss2Total} />
+            </>}
           </CardContent>
         </Card>
       )}

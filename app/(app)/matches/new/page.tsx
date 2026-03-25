@@ -364,7 +364,7 @@ export default function NewMatchPage() {
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        <Button type="submit" className="w-full" size="lg" disabled={loading || players.length < 2}>
+        <Button type="submit" className="w-full" size="lg" disabled={loading || players.length === 0 || (matchType !== 'practice' && players.length < 2)}>
           {loading ? 'Starting…' : 'Start match'}
         </Button>
       </form>
