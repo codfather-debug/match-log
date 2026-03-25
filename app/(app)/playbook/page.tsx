@@ -58,6 +58,14 @@ const BOOKS = [
     accent: 'border-zinc-800 hover:border-zinc-700',
     badge: 'text-zinc-300',
   },
+  {
+    href: '/playbook/court',
+    icon: '🟩',
+    title: 'Court Reference',
+    sub: 'Zones · Deuce/Ad · net heights · dimensions',
+    accent: 'border-emerald-400/20 hover:border-emerald-400/40',
+    badge: 'text-emerald-400',
+  },
 ];
 
 export default function PlaybookIndexPage() {
