@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/utils'
 import { DeletePlayerButton } from './DeletePlayerButton'
 import { AvatarUpload } from './AvatarUpload'
 import { PlayerStatsClient } from './PlayerStatsClient'
+import { FavoriteButton } from './FavoriteButton'
 
 export default async function PlayerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -62,7 +63,7 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
               playerName={player.name}
               avatarUrl={player.avatar_url ?? null}
             />
-            <div>
+            <div className="flex-1">
               <p className="text-base font-semibold">{player.name}</p>
               <p className="text-sm text-zinc-400">
                 {[player.handedness && `${player.handedness}-handed`, player.nationality]
@@ -71,6 +72,7 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
               <p className="text-xs text-zinc-600 mt-0.5">Added {formatDate(player.created_at)}</p>
             </div>
           </div>
+          <FavoriteButton playerId={player.id} />
         </CardContent>
       </Card>
 

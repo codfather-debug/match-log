@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Plus, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatDate } from '@/lib/utils'
+import { PlayersListClient } from './PlayersListClient'
 
 export default async function PlayersPage() {
   const supabase = await createClient()
@@ -28,30 +28,7 @@ export default async function PlayersPage() {
       </div>
 
       {players && players.length > 0 ? (
-        <div className="space-y-2">
-          {players.map((player) => (
-            <Link key={player.id} href={`/players/${player.id}`}>
-              <Card className="hover:border-zinc-700 transition-colors">
-                <CardContent className="flex items-center gap-3 p-4">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-sm font-medium overflow-hidden">
-                    {player.avatar_url
-                      ? <img src={player.avatar_url} alt={player.name} className="h-full w-full object-cover" />
-                      : player.name[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{player.name}</div>
-                    <div className="text-xs text-zinc-500">
-                      {[player.handedness && `${player.handedness}-handed`, player.nationality]
-                        .filter(Boolean)
-                        .join(' · ') || 'No details'}
-                    </div>
-                  </div>
-                  <div className="text-xs text-zinc-600">{formatDate(player.created_at)}</div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <PlayersListClient players={players} />
       ) : (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">

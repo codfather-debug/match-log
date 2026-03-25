@@ -2,9 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { LayoutDashboard, ListChecks, Users, BarChart3, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, BookOpen } from 'lucide-react'
 
-export function BottomNav({ signOut }: { signOut: () => Promise<void> }) {
+export function BottomNav() {
   const pathname = usePathname()
 
   // Hide on the live tracker — it has its own full-screen UI
@@ -12,9 +12,8 @@ export function BottomNav({ signOut }: { signOut: () => Promise<void> }) {
 
   const links = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Home' },
-    { href: '/matches', icon: ListChecks, label: 'Matches' },
-    { href: '/stats', icon: BarChart3, label: 'Stats' },
     { href: '/players', icon: Users, label: 'Players' },
+    { href: '/playbook', icon: BookOpen, label: 'Playbook' },
   ]
 
   return (
@@ -33,15 +32,6 @@ export function BottomNav({ signOut }: { signOut: () => Promise<void> }) {
             </Link>
           )
         })}
-        <form action={signOut} className="flex flex-1 flex-col items-center">
-          <button
-            type="submit"
-            className="flex flex-1 w-full flex-col items-center justify-center gap-1 py-2 text-zinc-500 hover:text-zinc-300 transition-colors"
-          >
-            <LogOut className="h-6 w-6" />
-            <span className="text-xs font-medium">Sign out</span>
-          </button>
-        </form>
       </div>
     </nav>
   )
