@@ -127,9 +127,9 @@ function CourtDiagram() {
           {/* Top backcourt */}
           <text x={x((sglLeft + center) / 2)}  y={y(topBaseline) + 11} fontSize={7.5} fill="#a1a1aa" textAnchor="middle" fontWeight="600">Deuce</text>
           <text x={x((center + sglRight) / 2)} y={y(topBaseline) + 11} fontSize={7.5} fill="#a1a1aa" textAnchor="middle" fontWeight="600">Ad</text>
-          {/* Bottom backcourt */}
-          <text x={x((sglLeft + center) / 2)}  y={y(botBaseline) - 4}  fontSize={7.5} fill="#a1a1aa" textAnchor="middle" fontWeight="600">Deuce</text>
-          <text x={x((center + sglRight) / 2)} y={y(botBaseline) - 4}  fontSize={7.5} fill="#a1a1aa" textAnchor="middle" fontWeight="600">Ad</text>
+          {/* Bottom backcourt — sides flip from the other end */}
+          <text x={x((sglLeft + center) / 2)}  y={y(botBaseline) - 4}  fontSize={7.5} fill="#a1a1aa" textAnchor="middle" fontWeight="600">Ad</text>
+          <text x={x((center + sglRight) / 2)} y={y(botBaseline) - 4}  fontSize={7.5} fill="#a1a1aa" textAnchor="middle" fontWeight="600">Deuce</text>
 
           {/* ── Service box labels ── */}
           <text x={x((sglLeft + center) / 2)}  y={y((topServiceLine + net) / 2)} fontSize={6.5} fill="#71717a" textAnchor="middle">Service box</text>
