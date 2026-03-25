@@ -1,13 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, BarChart3 } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils'
 import { DeletePlayerButton } from './DeletePlayerButton'
 import { AvatarUpload } from './AvatarUpload'
+import { PlayerStatsClient } from './PlayerStatsClient'
 
 export default async function PlayerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -26,17 +26,19 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
   const { data: matches } = await supabase
     .from('matches')
     .select(`
-      id, winner, match_type, status, started_at, created_at,
+      id, winner, match_type, status, started_at, created_at, surface,
+      player1_id, player2_id, player3_id, player4_id,
       player1:players!matches_player1_id_fkey(id, name),
-      player2:players!matches_player2_id_fkey(id, name)
+      player2:players!matches_player2_id_fkey(id, name),
+      player3:players!matches_player3_id_fkey(id, name),
+      player4:players!matches_player4_id_fkey(id, name),
+      sets(*, games(*, points(*)))
     `)
     .eq('user_id', user!.id)
-    .or(`player2_id.eq.${id},player4_id.eq.${id}`)
+    .or(`player1_id.eq.${id},player2_id.eq.${id},player3_id.eq.${id},player4_id.eq.${id}`)
     .order('created_at', { ascending: false })
 
-  const completed = (matches ?? []).filter(m => m.status === 'completed')
-  const wins = completed.filter(m => m.winner === 'team1').length
-  const losses = completed.filter(m => m.winner === 'team2').length
+  const allMatches = matches ?? []
 
   return (
     <div className="space-y-6">
@@ -47,7 +49,7 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
           </Link>
           <h1 className="text-xl font-semibold">{player.name}</h1>
         </div>
-        <DeletePlayerButton playerId={player.id} matchCount={(matches ?? []).length} />
+        <DeletePlayerButton playerId={player.id} matchCount={allMatches.length} />
       </div>
 
       {/* Player info */}
@@ -72,34 +74,29 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      {/* H2H summary */}
-      {completed.length > 0 && (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <Card><CardContent className="p-4 text-center"><div className="text-3xl font-bold text-emerald-400">{wins}</div><div className="text-xs text-zinc-400 mt-0.5">Wins</div></CardContent></Card>
-            <Card><CardContent className="p-4 text-center"><div className="text-3xl font-bold text-red-400">{losses}</div><div className="text-xs text-zinc-400 mt-0.5">Losses</div></CardContent></Card>
-            <Card><CardContent className="p-4 text-center"><div className="text-3xl font-bold">{completed.length}</div><div className="text-xs text-zinc-400 mt-0.5">Matches</div></CardContent></Card>
-          </div>
-
-          <Button asChild variant="outline" className="w-full">
-            <Link href={`/stats/vs/${id}`}>
-              <BarChart3 className="h-4 w-4" />
-              View detailed H2H stats
-            </Link>
-          </Button>
-        </>
-      )}
+      {/* Stats */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-medium text-zinc-400">Stats</h2>
+        <PlayerStatsClient
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          matches={allMatches as any}
+          playerId={id}
+        />
+      </div>
 
       {/* Match history */}
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-zinc-400">Match history</h2>
-        {(matches ?? []).length === 0 ? (
-          <p className="text-sm text-zinc-600">No matches against {player.name} yet.</p>
+        {allMatches.length === 0 ? (
+          <p className="text-sm text-zinc-600">No matches found for {player.name}.</p>
         ) : (
           <div className="space-y-2">
-            {(matches ?? []).map(m => {
-              const result = m.status === 'completed'
-                ? m.winner === 'team1' ? 'W' : 'L'
+            {allMatches.map(m => {
+              const p1 = (m.player1 as unknown as { name: string } | null)?.name ?? 'P1'
+              const p2 = (m.player2 as unknown as { name: string } | null)?.name
+              const isTeam1 = m.player1_id === id || m.player3_id === id
+              const result = m.status === 'completed' && m.winner
+                ? (isTeam1 ? m.winner === 'team1' : m.winner === 'team2') ? 'W' : 'L'
                 : null
               return (
                 <Link key={m.id} href={`/matches/${m.id}`}>
@@ -107,15 +104,15 @@ export default async function PlayerProfilePage({ params }: { params: Promise<{ 
                     <CardContent className="flex items-center justify-between p-4">
                       <div>
                         <p className="text-sm font-medium">
-                          {(m.player1 as unknown as { name: string } | null)?.name ?? 'P1'} vs {(m.player2 as unknown as { name: string } | null)?.name ?? 'P2'}
+                          {p2 ? `${p1} vs ${p2}` : p1}
                         </p>
                         <p className="text-xs text-zinc-500">{formatDate(m.created_at)} · {m.match_type}</p>
                       </div>
                       {result ? (
                         <Badge variant={result === 'W' ? 'success' : 'destructive'}>{result}</Badge>
-                      ) : (
+                      ) : m.status !== 'completed' ? (
                         <Badge variant="serve" className="animate-pulse">Live</Badge>
-                      )}
+                      ) : null}
                     </CardContent>
                   </Card>
                 </Link>

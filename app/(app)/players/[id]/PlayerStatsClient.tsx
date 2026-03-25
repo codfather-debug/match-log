@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { computeStats } from '@/lib/stats'
 import type { Point } from '@/types/tennis'
 
-type Player = { id: string; name: string }
+type PlayerRow = { id: string; name: string }
 type GameRow = { id: string; is_tiebreak: boolean; points: Point[] }
 type SetRow = { id: string; winner: string | null; games: GameRow[] }
 type MatchRow = {
@@ -15,59 +14,62 @@ type MatchRow = {
   match_type: string
   created_at: string
   surface?: string | null
-  player1?: Player | null
-  player2?: Player | null
-  player3?: Player | null
-  player4?: Player | null
+  player1_id: string | null
+  player2_id: string | null
+  player3_id: string | null
+  player4_id: string | null
+  player1?: PlayerRow | null
+  player2?: PlayerRow | null
+  player3?: PlayerRow | null
+  player4?: PlayerRow | null
   sets: SetRow[]
 }
 
 type StatTab = 'all' | 'serves' | 'winners' | 'ue' | 'returns'
 type MatchTypeFilter = 'all' | 'singles' | 'doubles' | 'practice'
 
-export function StatsClient({ matches }: { matches: MatchRow[] }) {
+function normalizePoints(match: MatchRow, playerId: string): Point[] {
+  const isTeam1 = match.player1_id === playerId || match.player3_id === playerId
+  const points = match.sets.flatMap(s => s.games.flatMap(g => g.points ?? []))
+  if (isTeam1) return points
+  // Flip so the viewed player is always team1
+  return points.map(p => ({
+    ...p,
+    point_winner: p.point_winner === 'team1' ? 'team2' : p.point_winner === 'team2' ? 'team1' : p.point_winner,
+    server: p.server === 'player1' ? 'player2' : p.server === 'player2' ? 'player1' : p.server,
+  } as Point))
+}
+
+export function PlayerStatsClient({ matches, playerId }: { matches: MatchRow[]; playerId: string }) {
   const [activeTab, setActiveTab] = useState<StatTab>('all')
   const [surfaceFilter, setSurfaceFilter] = useState<string>('all')
   const [matchTypeFilter, setMatchTypeFilter] = useState<MatchTypeFilter>('all')
 
-  const filteredMatches = useMemo(() => {
-    let ms = matches
+  const completedMatches = useMemo(() => matches.filter(m => m.winner), [matches])
+
+  const filtered = useMemo(() => {
+    let ms = completedMatches
     if (surfaceFilter !== 'all') ms = ms.filter(m => m.surface === surfaceFilter)
     if (matchTypeFilter !== 'all') ms = ms.filter(m => m.match_type === matchTypeFilter)
     return ms
-  }, [matches, surfaceFilter, matchTypeFilter])
+  }, [completedMatches, surfaceFilter, matchTypeFilter])
 
-  const wins = filteredMatches.filter(m => m.winner === 'team1').length
-  const losses = filteredMatches.filter(m => m.winner === 'team2').length
-  const total = filteredMatches.length
+  const wins = useMemo(() => filtered.filter(m => {
+    const isTeam1 = m.player1_id === playerId || m.player3_id === playerId
+    return isTeam1 ? m.winner === 'team1' : m.winner === 'team2'
+  }).length, [filtered, playerId])
+
+  const losses = filtered.length - wins
 
   const allPoints = useMemo(() =>
-    filteredMatches.flatMap(m => m.sets.flatMap(s => s.games.flatMap(g => g.points ?? [])))
-  , [filteredMatches])
+    filtered.flatMap(m => normalizePoints(m, playerId))
+  , [filtered, playerId])
 
   const allGames = useMemo(() =>
-    filteredMatches.flatMap(m => m.sets.flatMap(s => s.games))
-  , [filteredMatches])
+    filtered.flatMap(m => m.sets.flatMap(s => s.games))
+  , [filtered])
 
   const s = useMemo(() => computeStats(allPoints, allGames), [allPoints, allGames])
-
-  // Per-opponent records keyed by player id for H2H links
-  const opponentRecords = useMemo(() => {
-    const map: Record<string, { id: string; name: string; wins: number; losses: number }> = {}
-    for (const m of filteredMatches) {
-      const oppId = m.player2?.id ?? 'unknown'
-      const oppName = m.player2?.name ?? 'Unknown'
-      if (!map[oppId]) map[oppId] = { id: oppId, name: oppName, wins: 0, losses: 0 }
-      if (m.winner === 'team1') map[oppId].wins++
-      else if (m.winner === 'team2') map[oppId].losses++
-    }
-    return Object.values(map).sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses))
-  }, [matches])
-
-  // Recent form — last 10 completed matches
-  const recentForm = useMemo(() =>
-    filteredMatches.filter(m => m.winner).slice(0, 10).map(m => m.winner === 'team1' ? 'W' : 'L')
-  , [filteredMatches])
 
   const statTabs: { id: StatTab; label: string }[] = [
     { id: 'all', label: 'All' },
@@ -77,56 +79,52 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
     { id: 'returns', label: 'Returns' },
   ]
 
-  if (total === 0) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold">My Stats</h1>
-        <p className="text-sm text-zinc-400">No completed matches yet. Finish a match to see your stats.</p>
-      </div>
-    )
+  const matchTypesPresent = useMemo(() => {
+    const types = new Set(completedMatches.map(m => m.match_type))
+    return Array.from(types)
+  }, [completedMatches])
+
+  const surfaces = useMemo(() => {
+    return [...new Set(completedMatches.map(m => m.surface).filter(Boolean))] as string[]
+  }, [completedMatches])
+
+  if (completedMatches.length === 0) {
+    return <p className="text-sm text-zinc-500">No completed matches with point data yet.</p>
   }
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-semibold">My Stats</h1>
+  const total = filtered.length
 
+  return (
+    <div className="space-y-4">
       {/* Match type filter */}
-      {(() => {
-        const types = [...new Set(matches.map(m => m.match_type))] as string[]
-        if (types.length < 2) return null
-        return (
-          <div className="flex gap-2 flex-wrap">
-            {(['all', ...types]).map(t => (
-              <button key={t} onClick={() => setMatchTypeFilter(t as MatchTypeFilter)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${matchTypeFilter === t ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
-                {t === 'all' ? 'All types' : t}
-              </button>
-            ))}
-          </div>
-        )
-      })()}
+      {matchTypesPresent.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {(['all', ...matchTypesPresent] as const).map(t => (
+            <button key={t} onClick={() => setMatchTypeFilter(t as MatchTypeFilter)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${matchTypeFilter === t ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
+              {t === 'all' ? 'All types' : t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Surface filter */}
-      {(() => {
-        const surfaces = [...new Set(matches.map(m => m.surface).filter(Boolean))] as string[]
-        if (surfaces.length < 2) return null
-        return (
-          <div className="flex gap-2 flex-wrap">
-            {(['all', ...surfaces]).map(s => (
-              <button key={s} onClick={() => setSurfaceFilter(s)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${surfaceFilter === s ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
-                {s === 'all' ? 'All surfaces' : s}
-              </button>
-            ))}
-          </div>
-        )
-      })()}
+      {surfaces.length >= 2 && (
+        <div className="flex gap-2 flex-wrap">
+          {(['all', ...surfaces]).map(sf => (
+            <button key={sf} onClick={() => setSurfaceFilter(sf)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${surfaceFilter === sf ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'}`}>
+              {sf === 'all' ? 'All surfaces' : sf}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* W/L Record */}
+      {/* W/L */}
       <div className="grid grid-cols-3 gap-3">
-        <RecordCard label="Wins" value={wins} color="text-emerald-400" />
-        <RecordCard label="Losses" value={losses} color="text-red-400" />
-        <RecordCard label="Matches" value={total} />
+        <Card><CardContent className="p-4 text-center"><div className="text-3xl font-bold text-emerald-400">{wins}</div><div className="text-xs text-zinc-400 mt-0.5">Wins</div></CardContent></Card>
+        <Card><CardContent className="p-4 text-center"><div className="text-3xl font-bold text-red-400">{losses}</div><div className="text-xs text-zinc-400 mt-0.5">Losses</div></CardContent></Card>
+        <Card><CardContent className="p-4 text-center"><div className="text-3xl font-bold">{total}</div><div className="text-xs text-zinc-400 mt-0.5">Matches</div></CardContent></Card>
       </div>
 
       {/* Win % bar */}
@@ -141,8 +139,6 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
           </div>
         </div>
       )}
-
-      <WinTrendChart matches={filteredMatches} />
 
       {/* Stat tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1">
@@ -244,42 +240,6 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
           </CardContent>
         </Card>
       )}
-
-      {/* Recent form */}
-      {recentForm.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-medium text-zinc-400">Recent form</h2>
-          <div className="flex gap-1.5">
-            {recentForm.map((r, i) => (
-              <div key={i} className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${r === 'W' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                {r}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Per-opponent records */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-medium text-zinc-400">vs Opponents</h2>
-        {opponentRecords.map(opp => (
-          <Link key={opp.id} href={`/stats/vs/${opp.id}`}>
-            <Card className="hover:border-zinc-700 transition-colors">
-              <CardContent className="flex items-center justify-between p-4">
-                <div>
-                  <p className="text-sm font-medium">{opp.name}</p>
-                  <p className="text-xs text-zinc-500">{opp.wins + opp.losses} match{opp.wins + opp.losses !== 1 ? 'es' : ''}</p>
-                </div>
-                <div className="flex items-center gap-3 font-mono text-sm">
-                  <span className="text-emerald-400 font-bold">{opp.wins}W</span>
-                  <span className="text-zinc-600">–</span>
-                  <span className="text-red-400 font-bold">{opp.losses}L</span>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
     </div>
   )
 }
@@ -288,17 +248,6 @@ const SHOT_LABEL: Record<string, string> = {
   forehand: 'Forehand', backhand: 'Backhand', forehand_volley: 'FH Volley',
   backhand_volley: 'BH Volley', overhead: 'Overhead', lob: 'Lob',
   drop_shot: 'Drop shot', serve: 'Serve', return: 'Return',
-}
-
-function RecordCard({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <Card>
-      <CardContent className="p-4 text-center">
-        <div className={`text-3xl font-bold ${color ?? ''}`}>{value}</div>
-        <div className="text-xs text-zinc-400 mt-0.5">{label}</div>
-      </CardContent>
-    </Card>
-  )
 }
 
 function StatRow({ label, value, bar, max }: { label: string; value: string | number; bar?: boolean; max?: number }) {
@@ -323,41 +272,6 @@ function Divider({ label }: { label: string }) {
       <div className="h-px flex-1 bg-zinc-800" />
       <span className="text-xs text-zinc-500">{label}</span>
       <div className="h-px flex-1 bg-zinc-800" />
-    </div>
-  )
-}
-
-function WinTrendChart({ matches }: { matches: { winner: string | null; created_at: string }[] }) {
-  const completed = [...matches].filter(m => m.winner).reverse().slice(-12)
-  if (completed.length < 3) return null
-  const W = 300, H = 60, pad = 8
-  // Running 5-match win rate
-  const rates = completed.map((_, i) => {
-    const window = completed.slice(Math.max(0, i - 4), i + 1)
-    return window.filter(m => m.winner === 'team1').length / window.length
-  })
-  const xStep = (W - pad * 2) / Math.max(rates.length - 1, 1)
-  const toY = (v: number) => pad + (1 - v) * (H - pad * 2)
-  const pts = rates.map((r, i) => `${pad + i * xStep},${toY(r)}`).join(' ')
-  const midY = toY(0.5)
-  return (
-    <div className="space-y-1">
-      <p className="text-xs text-zinc-500">Win rate trend (rolling 5)</p>
-      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 p-2">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-          <line x1={pad} y1={midY} x2={W - pad} y2={midY} stroke="#3f3f46" strokeWidth="1" strokeDasharray="3,3" />
-          <polyline points={pts} fill="none" stroke="#10b981" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-          {rates.map((r, i) => (
-            <circle key={i} cx={pad + i * xStep} cy={toY(r)} r="2.5"
-              fill={r >= 0.5 ? '#10b981' : '#f43f5e'} />
-          ))}
-        </svg>
-        <div className="flex justify-between text-[10px] text-zinc-600 px-1">
-          <span>older</span>
-          <span>50% line</span>
-          <span>recent</span>
-        </div>
-      </div>
     </div>
   )
 }
