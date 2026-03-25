@@ -501,6 +501,15 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
             <BreakdownRow label="T" v1={s.aceLoc1['T'] ?? 0} v2={s.aceLoc2['T'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
             <BreakdownRow label="Body" v1={s.aceLoc1['body'] ?? 0} v2={s.aceLoc2['body'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
             <BreakdownRow label="Wide" v1={s.aceLoc1['wide'] ?? 0} v2={s.aceLoc2['wide'] ?? 0} max={Math.max(s.aces1, s.aces2, 1)} />
+            {(s.aces1 > 0 || s.aces2 > 0) && <>
+              <Divider label="Ace location heatmap" />
+              {s.aces1 > 0 && <Heatmap title={p1} zones={LOC_ZONES} counts={s.aceLoc1}
+                sublabels={Object.fromEntries(LOC_ZONES.map(z => [z.key, s.aceLoc1[z.key] ? `${Math.round((s.aceLoc1[z.key]??0)/s.aces1*100)}%` : '—']))}
+                color="emerald" />}
+              {s.aces2 > 0 && <Heatmap title={p2} zones={LOC_ZONES} counts={s.aceLoc2}
+                sublabels={Object.fromEntries(LOC_ZONES.map(z => [z.key, s.aceLoc2[z.key] ? `${Math.round((s.aceLoc2[z.key]??0)/s.aces2*100)}%` : '—']))}
+                color="emerald" />}
+            </>}
           </CardContent>
         </Card>
       )}
@@ -533,6 +542,15 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
               if (v1 + v2 === 0) return null
               return <BreakdownRow key={shot} label={SHOT_LABEL[shot]} v1={v1} v2={v2} max={Math.max(s.winners1, s.winners2, 1)} />
             })}
+            {(s.winners1 > 0 || s.winners2 > 0) && <>
+              <Divider label="Winner stroke heatmap" />
+              {s.winners1 > 0 && <Heatmap title={p1} zones={STROKE_ZONES} counts={s.winnerStrokes1}
+                sublabels={Object.fromEntries(STROKE_ZONES.map(z => [z.key, s.winnerStrokes1[z.key] ? `${Math.round((s.winnerStrokes1[z.key]??0)/s.winners1*100)}%` : '—']))}
+                color="emerald" />}
+              {s.winners2 > 0 && <Heatmap title={p2} zones={STROKE_ZONES} counts={s.winnerStrokes2}
+                sublabels={Object.fromEntries(STROKE_ZONES.map(z => [z.key, s.winnerStrokes2[z.key] ? `${Math.round((s.winnerStrokes2[z.key]??0)/s.winners2*100)}%` : '—']))}
+                color="emerald" />}
+            </>}
           </CardContent>
         </Card>
       )}
@@ -554,6 +572,15 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
             <BreakdownRow label="Long" v1={s.ueDirs1['long'] ?? 0} v2={s.ueDirs2['long'] ?? 0} max={Math.max(s.ue1, s.ue2, 1)} />
             <BreakdownRow label="Wide" v1={s.ueDirs1['wide'] ?? 0} v2={s.ueDirs2['wide'] ?? 0} max={Math.max(s.ue1, s.ue2, 1)} />
             <BreakdownRow label="Net" v1={s.ueDirs1['net'] ?? 0} v2={s.ueDirs2['net'] ?? 0} max={Math.max(s.ue1, s.ue2, 1)} />
+            {(s.ue1 > 0 || s.ue2 > 0) && <>
+              <Divider label="UE direction heatmap" />
+              {s.ue1 > 0 && <Heatmap title={p1} zones={DIR_ZONES} counts={s.ueDirs1}
+                sublabels={Object.fromEntries(DIR_ZONES.map(z => [z.key, s.ueDirs1[z.key] ? `${Math.round((s.ueDirs1[z.key]??0)/s.ue1*100)}%` : '—']))}
+                color="rose" />}
+              {s.ue2 > 0 && <Heatmap title={p2} zones={DIR_ZONES} counts={s.ueDirs2}
+                sublabels={Object.fromEntries(DIR_ZONES.map(z => [z.key, s.ueDirs2[z.key] ? `${Math.round((s.ueDirs2[z.key]??0)/s.ue2*100)}%` : '—']))}
+                color="rose" />}
+            </>}
           </CardContent>
         </Card>
       )}
@@ -587,6 +614,37 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
                 />
               )
             })}
+            {(s.retTotal1 > 0 || s.retTotal2 > 0) && <>
+              <Divider label="Return in-play heatmap" />
+              {s.retTotal1 > 0 && <Heatmap
+                title={`${p1} (returns faced by serve location)`}
+                zones={LOC_ZONES}
+                counts={s.retLocTotal1}
+                intensities={Object.fromEntries(LOC_ZONES.map(z => {
+                  const t = s.retLocTotal1[z.key] ?? 0; const sc = s.retLocSucc1[z.key] ?? 0
+                  return [z.key, t ? sc / t : 0]
+                }))}
+                sublabels={Object.fromEntries(LOC_ZONES.map(z => {
+                  const t = s.retLocTotal1[z.key] ?? 0; const sc = s.retLocSucc1[z.key] ?? 0
+                  return [z.key, t ? `${Math.round(sc / t * 100)}% in play` : '—']
+                }))}
+                color="blue"
+              />}
+              {s.retTotal2 > 0 && <Heatmap
+                title={`${p2} (returns faced by serve location)`}
+                zones={LOC_ZONES}
+                counts={s.retLocTotal2}
+                intensities={Object.fromEntries(LOC_ZONES.map(z => {
+                  const t = s.retLocTotal2[z.key] ?? 0; const sc = s.retLocSucc2[z.key] ?? 0
+                  return [z.key, t ? sc / t : 0]
+                }))}
+                sublabels={Object.fromEntries(LOC_ZONES.map(z => {
+                  const t = s.retLocTotal2[z.key] ?? 0; const sc = s.retLocSucc2[z.key] ?? 0
+                  return [z.key, t ? `${Math.round(sc / t * 100)}% in play` : '—']
+                }))}
+                color="rose"
+              />}
+            </>}
           </CardContent>
         </Card>
       )}
@@ -764,37 +822,69 @@ function PointRow({ point, index, onEdit }: { point: Point; index: number; onEdi
   )
 }
 
-function ServeHeatmap({ title, locData, wonData, total }: {
-  title: string
-  locData: Record<string, number>
-  wonData: Record<string, number>
-  total: number
+// ─── Heatmap ──────────────────────────────────────────────────────────────────
+
+const LOC_ZONES = [{ key: 'T', label: 'T' }, { key: 'body', label: 'Body' }, { key: 'wide', label: 'Wide' }]
+const DIR_ZONES = [{ key: 'long', label: 'Long' }, { key: 'wide', label: 'Wide' }, { key: 'net', label: 'Net' }]
+const STROKE_ZONES = (['forehand','backhand','return','forehand_volley','backhand_volley','overhead','lob','drop_shot'] as const)
+  .map(k => ({ key: k as string, label: SHOT_LABEL[k] }))
+
+const COLOR_RGB: Record<string, string> = {
+  blue: '96,165,250', rose: '251,113,133', emerald: '52,211,153', amber: '251,191,36',
+}
+
+function Heatmap({ title, zones, counts, sublabels, intensities, color = 'blue' }: {
+  title?: string
+  zones: { key: string; label: string }[]
+  counts: Record<string, number>
+  sublabels?: Record<string, string>
+  intensities?: Record<string, number>
+  color?: 'blue' | 'rose' | 'emerald' | 'amber'
 }) {
-  if (total === 0) return null
-  const zones: { key: string; label: string }[] = [
-    { key: 'T', label: 'T' },
-    { key: 'body', label: 'Body' },
-    { key: 'wide', label: 'Wide' },
-  ]
+  const active = zones.filter(z => (counts[z.key] ?? 0) > 0)
+  if (active.length === 0) return null
+  const maxCount = Math.max(...active.map(z => counts[z.key] ?? 0), 1)
+  const rgb = COLOR_RGB[color]
+  const cols = Math.min(active.length, 3)
   return (
     <div className="space-y-1">
-      <p className="text-xs text-zinc-500 font-medium">{title}</p>
-      <div className="grid grid-cols-3 gap-1.5">
-        {zones.map(({ key, label }) => {
-          const count = locData[key] ?? 0
-          const won = wonData[key] ?? 0
-          const pct = count ? Math.round((won / count) * 100) : null
-          const intensity = pct !== null ? pct / 100 : 0
+      {title && <p className="text-xs text-zinc-500">{title}</p>}
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        {active.map(({ key, label }) => {
+          const count = counts[key] ?? 0
+          const intensity = intensities ? (intensities[key] ?? 0) : count / maxCount
           return (
             <div key={key} className="rounded-md border border-zinc-800 p-2 text-center space-y-0.5"
-              style={{ background: `rgba(96,165,250,${intensity * 0.4})` }}>
-              <p className="text-xs font-semibold">{label}</p>
+              style={{ background: `rgba(${rgb},${intensity * 0.45})` }}>
+              <p className="text-xs font-semibold text-zinc-300">{label}</p>
               <p className="text-base font-bold font-mono">{count}</p>
-              <p className="text-[10px] text-zinc-400">{pct !== null ? `${pct}% won` : '—'}</p>
+              {sublabels?.[key] && <p className="text-[10px] text-zinc-400">{sublabels[key]}</p>}
             </div>
           )
         })}
       </div>
     </div>
+  )
+}
+
+function ServeHeatmap({ title, locData, wonData, total }: {
+  title: string; locData: Record<string, number>; wonData: Record<string, number>; total: number
+}) {
+  if (total === 0) return null
+  return (
+    <Heatmap
+      title={title}
+      zones={LOC_ZONES}
+      counts={locData}
+      intensities={Object.fromEntries(LOC_ZONES.map(z => {
+        const c = locData[z.key] ?? 0; const w = wonData[z.key] ?? 0
+        return [z.key, c ? w / c : 0]
+      }))}
+      sublabels={Object.fromEntries(LOC_ZONES.map(z => {
+        const c = locData[z.key] ?? 0; const w = wonData[z.key] ?? 0
+        return [z.key, c ? `${Math.round(w / c * 100)}% won` : '—']
+      }))}
+      color="blue"
+    />
   )
 }
