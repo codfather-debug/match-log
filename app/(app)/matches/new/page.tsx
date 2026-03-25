@@ -34,6 +34,8 @@ export default function NewMatchPage() {
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [addPlayerError, setAddPlayerError] = useState('')
 
+  const [youPlayerId, setYouPlayerId] = useState<string | null>(null)
+
   const opponentsFilled = useRef(false)
 
   async function loadPlayers() {
@@ -64,7 +66,10 @@ export default function NewMatchPage() {
     if (opp2) setPlayer4(opp2.id)
   }
 
-  useEffect(() => { loadPlayers() }, [])
+  useEffect(() => {
+    loadPlayers()
+    setYouPlayerId(localStorage.getItem('matchlog_you_player_id'))
+  }, [])
 
   useEffect(() => {
     if (matchType !== 'doubles' || opponentsFilled.current || players.length === 0) return
@@ -180,9 +185,22 @@ export default function NewMatchPage() {
 
   const isPractice = matchType === 'practice'
 
-  const playerOptions = players.map((p) => (
-    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-  ))
+  const sortedPlayers = youPlayerId
+    ? [...players].sort((a, b) => (a.id === youPlayerId ? -1 : b.id === youPlayerId ? 1 : 0))
+    : players
+
+  const playerOptions = sortedPlayers.map((p) => {
+    const isYou = p.id === youPlayerId
+    return (
+      <SelectItem
+        key={p.id}
+        value={p.id}
+        className={isYou ? 'text-amber-400 font-medium' : ''}
+      >
+        {isYou ? `★ ${p.name}` : p.name}
+      </SelectItem>
+    )
+  })
 
   return (
     <div className="space-y-6">
