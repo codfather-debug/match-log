@@ -749,12 +749,13 @@ function StepContent({
   }
 
   if (step === 'fault_direction') {
+    const advanceToSecond = () => { setServeNumber(2); onGo('serve_placement', {}) }
     return (
       <StepCard title="Fault — where did it miss?">
         <div className="flex flex-col gap-2">
-          <ChoiceBtn label="Long" accent="red" onClick={() => { setServeNumber(2); setStep('serve_placement') }} />
-          <ChoiceBtn label="Wide" accent="red" onClick={() => { setServeNumber(2); setStep('serve_placement') }} />
-          <ChoiceBtn label="In the Net" accent="red" onClick={() => { setServeNumber(2); setStep('serve_placement') }} />
+          <ChoiceBtn label="Long" accent="red" onClick={advanceToSecond} />
+          <ChoiceBtn label="Wide" accent="red" onClick={advanceToSecond} />
+          <ChoiceBtn label="In the Net" accent="red" onClick={advanceToSecond} />
         </div>
       </StepCard>
     )
