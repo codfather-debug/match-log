@@ -33,7 +33,7 @@ import type {
   ShotType,
 } from '@/types/tennis'
 
-type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'rally_length' | 'winner_direction' | 'confirm'
+type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'rally_length' | 'winner_direction' | 'confirm' | 'fault_direction'
 
 const emptyDraft = (): PointDraft => ({
   serve_number: 1,
@@ -74,6 +74,20 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     if (needsServerPick(currentGame)) setServerConfirmed(false)
   }, [currentGame?.id])
 
+  // Receiver side picker: ask once per set for games 1 and 2 (doubles only)
+  const [team1ReceiverDeuce, setTeam1ReceiverDeuce] = useState<'player1' | 'player3' | null>(null)
+  const [team2ReceiverDeuce, setTeam2ReceiverDeuce] = useState<'player2' | 'player4' | null>(null)
+  // Reset receiver picks when a new set starts
+  const currentSetNumber = currentSet?.set_number ?? 1
+  const lastSetNumberRef = useRef(currentSetNumber)
+  useEffect(() => {
+    if (currentSetNumber !== lastSetNumberRef.current) {
+      setTeam1ReceiverDeuce(null)
+      setTeam2ReceiverDeuce(null)
+      lastSetNumberRef.current = currentSetNumber
+    }
+  }, [currentSetNumber])
+
   if (!currentSet || !currentGame) {
     return (
       <div className="flex h-dvh items-center justify-center text-zinc-400">
@@ -93,7 +107,14 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const isPractice = match.match_type === 'practice'
   const server = currentGame.server as PlayerSlot
   const serverTeam = teamOfPlayer(server)
+  const receivingTeam: Team = serverTeam === 'team1' ? 'team2' : 'team1'
   const servingName = server === 'player1' ? p1Name : server === 'player2' ? p2Name : server === 'player3' ? p3Name : p4Name
+
+  // Show receiver question after game 1 and game 2 server is confirmed (doubles only)
+  const needsReceiverPick = isDoubles && serverConfirmed && game.game_number <= 2 && (
+    (receivingTeam === 'team2' && team2ReceiverDeuce === null) ||
+    (receivingTeam === 'team1' && team1ReceiverDeuce === null)
+  )
 
   const completedSets = match.sets?.filter((s) => s.winner) ?? []
   const t1sets = completedSets.filter((s) => s.winner === 'team1').length
@@ -116,9 +137,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   }
 
   function handleFault() {
-    setServeNumber(2)
     setDraft((d) => ({ ...d, serve_result: 'fault' }))
-    setStep('serve_placement')
+    setStep('fault_direction')
   }
 
   function back() {
@@ -131,6 +151,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     if (step === 'rally_length') return setStep('point_winner')
     if (step === 'point_winner') return setStep('serve_result')
     if (step === 'serve_result') return setStep('serve_placement')
+    if (step === 'fault_direction') { setDraft(d => ({ ...d, serve_result: null })); return setStep('serve_placement') }
   }
 
   async function savePoint(finalDraft: PointDraft) {
@@ -565,7 +586,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       {/* Step logger */}
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
         {!serverConfirmed ? (
-          <StepCard title="Who is serving?">
+          <StepCard title={`Game ${game.game_number} — Who is serving?`}>
             <div className="flex flex-col gap-2">
               {/* Team 1 players — green */}
               {([{ label: p1Name, slot: 'player1' }, ...(isDoubles ? [{ label: p3Name, slot: 'player3' }] : [])] as { label: string; slot: PlayerSlot }[]).map(({ label, slot }) => (
@@ -593,6 +614,22 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
                   }}
                 />
               ))}
+            </div>
+          </StepCard>
+        ) : needsReceiverPick ? (
+          <StepCard title={`Game ${game.game_number} — Who receives on the deuce side (right)?`}>
+            <div className="flex flex-col gap-2">
+              {receivingTeam === 'team2' ? (
+                <>
+                  <ChoiceBtn label={p2Name} accent="red" onClick={() => setTeam2ReceiverDeuce('player2')} />
+                  <ChoiceBtn label={p4Name} accent="red" onClick={() => setTeam2ReceiverDeuce('player4')} />
+                </>
+              ) : (
+                <>
+                  <ChoiceBtn label={p1Name} accent="green" onClick={() => setTeam1ReceiverDeuce('player1')} />
+                  <ChoiceBtn label={p3Name} accent="green" onClick={() => setTeam1ReceiverDeuce('player3')} />
+                </>
+              )}
             </div>
           </StepCard>
         ) : (
@@ -708,6 +745,18 @@ function StepContent({
           </button>
         )}
       </div>
+    )
+  }
+
+  if (step === 'fault_direction') {
+    return (
+      <StepCard title="Fault — where did it miss?">
+        <div className="flex flex-col gap-2">
+          <ChoiceBtn label="Long" accent="red" onClick={() => { setServeNumber(2); setStep('serve_placement') }} />
+          <ChoiceBtn label="Wide" accent="red" onClick={() => { setServeNumber(2); setStep('serve_placement') }} />
+          <ChoiceBtn label="In the Net" accent="red" onClick={() => { setServeNumber(2); setStep('serve_placement') }} />
+        </div>
+      </StepCard>
     )
   }
 

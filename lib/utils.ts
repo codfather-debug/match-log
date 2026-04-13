@@ -56,8 +56,8 @@ export function nextServer(currentServer: PlayerSlot, matchType: 'singles' | 'do
   if (matchType === 'singles') {
     return currentServer === 'player1' ? 'player2' : 'player1'
   }
-  // Doubles rotation: p1 -> p3 -> p2 -> p4 -> p1
-  const rotation: PlayerSlot[] = ['player1', 'player3', 'player2', 'player4']
+  // Doubles rotation: teams alternate every game — p1(t1) -> p2(t2) -> p3(t1) -> p4(t2) -> p1
+  const rotation: PlayerSlot[] = ['player1', 'player2', 'player3', 'player4']
   const idx = rotation.indexOf(currentServer)
   return rotation[(idx + 1) % 4]
 }
