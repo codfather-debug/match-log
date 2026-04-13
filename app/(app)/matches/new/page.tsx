@@ -307,7 +307,7 @@ export default function NewMatchPage() {
 
           <div className="grid grid-cols-2 gap-3">
             {/* Team 1 — green */}
-            <div className="space-y-2 rounded-xl border border-green-700/60 bg-green-900/30 p-3">
+            <div className="space-y-2 rounded-xl border border-green-700 p-3" style={{ backgroundColor: 'rgba(20, 83, 45, 0.45)' }}>
               <p className="text-xs font-semibold text-green-400 uppercase tracking-wider">
                 {matchType === 'doubles' ? 'Team 1' : isPractice ? 'You' : 'Team 1'}
               </p>
@@ -331,7 +331,7 @@ export default function NewMatchPage() {
 
             {/* Team 2 — red */}
             {!isPractice && (
-              <div className="space-y-2 rounded-xl border border-red-700/60 bg-red-900/30 p-3">
+              <div className="space-y-2 rounded-xl border border-red-700 p-3" style={{ backgroundColor: 'rgba(127, 29, 29, 0.45)' }}>
                 <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">
                   {matchType === 'doubles' ? 'Team 2' : 'Team 2'}
                 </p>
