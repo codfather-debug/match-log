@@ -743,7 +743,7 @@ function StepContent({
       }
     }
     return (
-      <StepCard title="Last shot">
+      <StepCard title="Last shot" onSkip={() => onSave({ ...draft, last_shot_type: null })}>
         <div className="flex flex-col gap-2">
           <ChoiceBtn label="Forehand" onClick={() => save('forehand')} />
           <ChoiceBtn label="Backhand" onClick={() => save('backhand')} />
@@ -760,7 +760,7 @@ function StepContent({
 
   if (step === 'winner_direction') {
     return (
-      <StepCard title="Shot direction">
+      <StepCard title="Shot direction" onSkip={() => onSave({ ...draft, winner_direction: null })}>
         <div className="flex flex-col gap-2">
           <ChoiceBtn label="Cross-court" accent="green" onClick={() => onSave({ ...draft, winner_direction: 'cross_court' })} />
           <ChoiceBtn label="Down the line" accent="green" onClick={() => onSave({ ...draft, winner_direction: 'down_the_line' })} />
@@ -772,7 +772,7 @@ function StepContent({
 
   if (step === 'error_direction') {
     return (
-      <StepCard title="Where did it go?">
+      <StepCard title="Where did it go?" onSkip={() => onGo('shot_type', { error_direction: null })}>
         <ErrorCourtDiagram onSelect={(dir) => onGo('shot_type', { error_direction: dir })} />
       </StepCard>
     )
@@ -782,9 +782,39 @@ function StepContent({
     const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
     return (
       <StepCard title="Who won the point?">
-        <div className="flex flex-col gap-2">
-          <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo('rally_length', { point_winner: 'team1', last_shot_player: isError ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })} />
-          <ChoiceBtn label={p2Name} accent="green" onClick={() => onGo('rally_length', { point_winner: 'team2', last_shot_player: isError ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })} />
+        <div className="grid grid-cols-2 gap-3">
+          {/* Team 1 — green */}
+          <div className="space-y-2 rounded-xl border border-emerald-700/50 p-2" style={{ backgroundColor: 'rgba(20,83,45,0.4)' }}>
+            <p className="text-center text-xs font-semibold uppercase tracking-wider text-emerald-400">Team 1</p>
+            <ChoiceBtn
+              label={p1Name}
+              accent="green"
+              onClick={() => onGo('rally_length', { point_winner: 'team1', last_shot_player: isError ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })}
+            />
+            {isDoubles && (
+              <ChoiceBtn
+                label={p3Name}
+                accent="green"
+                onClick={() => onGo('rally_length', { point_winner: 'team1', last_shot_player: isError ? null : 'player3' as PlayerSlot })}
+              />
+            )}
+          </div>
+          {/* Team 2 — red */}
+          <div className="space-y-2 rounded-xl border border-red-700/50 p-2" style={{ backgroundColor: 'rgba(127,29,29,0.4)' }}>
+            <p className="text-center text-xs font-semibold uppercase tracking-wider text-red-400">Team 2</p>
+            <ChoiceBtn
+              label={p2Name}
+              accent="red"
+              onClick={() => onGo('rally_length', { point_winner: 'team2', last_shot_player: isError ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })}
+            />
+            {isDoubles && (
+              <ChoiceBtn
+                label={p4Name}
+                accent="red"
+                onClick={() => onGo('rally_length', { point_winner: 'team2', last_shot_player: isError ? null : 'player4' as PlayerSlot })}
+              />
+            )}
+          </div>
         </div>
       </StepCard>
     )
@@ -794,7 +824,7 @@ function StepContent({
     const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
     const nextStep: Step = isError ? 'error_direction' : 'shot_type'
     return (
-      <StepCard title="Rally length">
+      <StepCard title="Rally length" onSkip={() => onGo(nextStep, { rally_length: draft.rally_length || 0 })}>
         <div className="space-y-3">
           <div className="grid grid-cols-5 gap-1.5">
             {[1,2,3,4,5,6,7,8,9,10].map((n) => (
@@ -1113,12 +1143,19 @@ function ErrorCourtDiagram({ onSelect }: { onSelect: (dir: 'long' | 'wide' | 'ne
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function StepCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function StepCard({ title, subtitle, children, onSkip }: { title: string; subtitle?: string; children: React.ReactNode; onSkip?: () => void }) {
   return (
     <div className="space-y-3">
-      <div>
-        <p className="text-sm font-medium text-zinc-200">{title}</p>
-        {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-zinc-200">{title}</p>
+          {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
+        </div>
+        {onSkip && (
+          <button onClick={onSkip} className="text-xs text-zinc-500 hover:text-zinc-200 transition whitespace-nowrap pt-0.5">
+            Skip →
+          </button>
+        )}
       </div>
       {children}
     </div>
