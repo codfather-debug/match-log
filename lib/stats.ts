@@ -1,4 +1,4 @@
-import type { Point } from '@/types/tennis'
+import type { Point, PlayerSlot, Team } from '@/types/tennis'
 
 export function count<T>(arr: T[], pred: (x: T) => boolean) { return arr.filter(pred).length }
 
@@ -101,3 +101,75 @@ export function computeStats(points: Point[], games?: { id: string; is_tiebreak:
 }
 
 export type MatchStats = ReturnType<typeof computeStats>
+
+type SetForStats = {
+  id: string
+  team1_receiver_deuce: 'player1' | 'player3' | null
+  team2_receiver_deuce: 'player2' | 'player4' | null
+  games?: { id: string }[]
+}
+
+export function computePlayerStats(points: Point[], sets: SetForStats[]) {
+  // Build game → set mapping for receiver lookup
+  const gameToSet: Record<string, SetForStats> = {}
+  for (const s of sets) {
+    for (const g of s.games ?? []) {
+      gameToSet[g.id] = s
+    }
+  }
+
+  function getReceiver(point: Point): PlayerSlot | null {
+    const set = gameToSet[point.game_id]
+    if (!set || !point.court_side) return null
+    const serverTeam: Team = point.server === 'player1' || point.server === 'player3' ? 'team1' : 'team2'
+    const receivingTeam: Team = serverTeam === 'team1' ? 'team2' : 'team1'
+    if (receivingTeam === 'team1') {
+      const dr = set.team1_receiver_deuce
+      if (!dr) return null
+      const ar: PlayerSlot = dr === 'player1' ? 'player3' : 'player1'
+      return point.court_side === 'deuce' ? dr : ar
+    } else {
+      const dr = set.team2_receiver_deuce
+      if (!dr) return null
+      const ar: PlayerSlot = dr === 'player2' ? 'player4' : 'player2'
+      return point.court_side === 'deuce' ? dr : ar
+    }
+  }
+
+  const slots: PlayerSlot[] = ['player1', 'player2', 'player3', 'player4']
+
+  return slots.map(slot => {
+    const myTeam: Team = slot === 'player1' || slot === 'player3' ? 'team1' : 'team2'
+
+    // Serving stats
+    const servingPts = points.filter(p => p.server === slot)
+    const aces = count(servingPts, p => p.outcome === 'ace')
+    const dfs = count(servingPts, p => p.outcome === 'double_fault')
+    const fs1In = count(servingPts, p => p.serve_number === 1)
+    const ssTotal = count(servingPts, p => p.serve_number === 2)
+    const fsWon = count(servingPts, p => p.serve_number === 1 && p.point_winner === myTeam)
+    const ssWon = count(servingPts, p => p.serve_number === 2 && p.point_winner === myTeam)
+
+    // Shot stats
+    const winners = count(points, p => p.outcome === 'winner' && p.last_shot_player === slot)
+    const ues = count(points, p => p.outcome === 'unforced_error' && p.last_shot_player === slot)
+
+    // Return stats (using receiver position data)
+    const retPts = points.filter(p => getReceiver(p) === slot)
+    const ret1Pts = retPts.filter(p => p.serve_number === 1)
+    const ret2Pts = retPts.filter(p => p.serve_number === 2)
+    const retWon1 = count(ret1Pts, p => p.point_winner === myTeam)
+    const retWon2 = count(ret2Pts, p => p.point_winner === myTeam)
+
+    return {
+      slot,
+      aces, dfs,
+      winners, ues,
+      fs1In, ssTotal, fsWon, ssWon,
+      retTotal1: ret1Pts.length, retTotal2: ret2Pts.length,
+      retWon1, retWon2,
+    }
+  })
+}
+
+export type PlayerStats = ReturnType<typeof computePlayerStats>

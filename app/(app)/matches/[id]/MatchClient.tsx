@@ -9,13 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { formatDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { computeStats } from '@/lib/stats'
+import { computeStats, computePlayerStats } from '@/lib/stats'
 import type { Point } from '@/types/tennis'
 
 type GameRow = { id: string; server: string; game_number: number; is_tiebreak: boolean; points: Point[] }
 type SetRow = {
   id: string; set_number: number; team1_games: number; team2_games: number
   winner: string | null; is_tiebreak: boolean; is_super_tiebreak: boolean
+  team1_receiver_deuce: 'player1' | 'player3' | null
+  team2_receiver_deuce: 'player2' | 'player4' | null
   games: GameRow[]
 }
 
@@ -33,7 +35,7 @@ type Props = {
   rating?: number | null
 }
 
-type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns' | 'tiebreaks'
+type StatTab = 'all' | 'serves' | 'aces' | 'df' | 'winners' | 'ue' | 'returns' | 'tiebreaks' | 'individual'
 
 export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, createdAt, sets, notes, weather, surface, rating: initialRating }: Props) {
   const isDoubles = matchType === 'doubles'
@@ -194,7 +196,15 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
     { id: 'ue', label: 'UErrors' },
     { id: 'returns', label: 'Returns' },
     { id: 'tiebreaks', label: 'Tiebreaks' },
+    ...(isDoubles ? [{ id: 'individual' as StatTab, label: 'Individual' }] : []),
   ]
+
+  const playerNames: Record<string, string> = {
+    player1: p1, player2: p2,
+    ...(p3 ? { player3: p3 } : {}),
+    ...(p4 ? { player4: p4 } : {}),
+  }
+  const playerStats = isDoubles ? computePlayerStats(filteredPoints, sets) : null
 
   return (
     <div className="space-y-6">
@@ -670,6 +680,64 @@ export function MatchClient({ id, p1, p2, p3, p4, status, winner, matchType, cre
                 <StatRow label="TB win %" v1={s.tbPct1 !== null ? `${s.tbPct1}%` : '—'} v2={s.tbPct2 !== null ? `${s.tbPct2}%` : '—'} />
                 <StatRow label="Total TB points" v1={s.tbPoints} v2={s.tbPoints} />
               </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'individual' && isDoubles && playerStats && (
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Individual player stats</CardTitle></CardHeader>
+          <CardContent className="space-y-5 text-sm">
+            {playerStats.map(ps => {
+              const name = playerNames[ps.slot] ?? ps.slot
+              const isTeam1 = ps.slot === 'player1' || ps.slot === 'player3'
+              const teamColor = isTeam1 ? 'text-blue-400' : 'text-rose-400'
+              const hasReturnData = ps.retTotal1 + ps.retTotal2 > 0
+              return (
+                <div key={ps.slot} className="space-y-2 rounded-lg border border-zinc-800 p-3">
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${teamColor}`}>{name}</p>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="space-y-0.5">
+                      <p className="text-base font-bold">{ps.winners}</p>
+                      <p className="text-[10px] text-zinc-500">Winners</p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-base font-bold">{ps.ues}</p>
+                      <p className="text-[10px] text-zinc-500">UEs</p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-base font-bold">{ps.aces}</p>
+                      <p className="text-[10px] text-zinc-500">Aces</p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-base font-bold">{ps.dfs}</p>
+                      <p className="text-[10px] text-zinc-500">DFs</p>
+                    </div>
+                  </div>
+                  {ps.fs1In + ps.ssTotal > 0 && (
+                    <div className="border-t border-zinc-800 pt-2 space-y-1">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Serving</p>
+                      <div className="flex gap-4 text-xs text-zinc-400">
+                        <span>1st won: <span className="text-zinc-200 font-medium">{ps.fsWon}/{ps.fs1In}</span></span>
+                        <span>2nd won: <span className="text-zinc-200 font-medium">{ps.ssWon}/{ps.ssTotal}</span></span>
+                      </div>
+                    </div>
+                  )}
+                  {hasReturnData && (
+                    <div className="border-t border-zinc-800 pt-2 space-y-1">
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Returning</p>
+                      <div className="flex gap-4 text-xs text-zinc-400">
+                        <span>vs 1st: <span className="text-zinc-200 font-medium">{ps.retWon1}/{ps.retTotal1}</span></span>
+                        <span>vs 2nd: <span className="text-zinc-200 font-medium">{ps.retWon2}/{ps.retTotal2}</span></span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {playerStats.every(ps => ps.retTotal1 + ps.retTotal2 === 0) && (
+              <p className="text-xs text-zinc-600 text-center">Return stats available after receiver positions are logged during the match.</p>
             )}
           </CardContent>
         </Card>

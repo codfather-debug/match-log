@@ -33,7 +33,7 @@ import type {
   ShotType,
 } from '@/types/tennis'
 
-type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'rally_length' | 'winner_direction' | 'confirm' | 'fault_direction'
+type Step = 'serve_placement' | 'serve_result' | 'outcome' | 'shot_type' | 'error_direction' | 'point_winner' | 'ue_player' | 'rally_length' | 'winner_direction' | 'confirm' | 'fault_direction'
 
 const emptyDraft = (): PointDraft => ({
   serve_number: 1,
@@ -148,7 +148,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
       return setStep(isError ? 'error_direction' : 'rally_length')
     }
     if (step === 'error_direction') return setStep('rally_length')
-    if (step === 'rally_length') return setStep('point_winner')
+    if (step === 'rally_length') return setStep(isDoubles && draft.outcome === 'unforced_error' ? 'ue_player' : 'point_winner')
+    if (step === 'ue_player') return setStep('point_winner')
     if (step === 'point_winner') return setStep('serve_result')
     if (step === 'serve_result') return setStep('serve_placement')
     if (step === 'fault_direction') { setDraft(d => ({ ...d, serve_result: null })); return setStep('serve_placement') }
@@ -621,13 +622,25 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
             <div className="flex flex-col gap-2">
               {receivingTeam === 'team2' ? (
                 <>
-                  <ChoiceBtn label={p2Name} accent="red" onClick={() => setTeam2ReceiverDeuce('player2')} />
-                  <ChoiceBtn label={p4Name} accent="red" onClick={() => setTeam2ReceiverDeuce('player4')} />
+                  <ChoiceBtn label={p2Name} accent="red" onClick={async () => {
+                    setTeam2ReceiverDeuce('player2')
+                    await supabase.from('sets').update({ team2_receiver_deuce: 'player2' }).eq('id', setData.id)
+                  }} />
+                  <ChoiceBtn label={p4Name} accent="red" onClick={async () => {
+                    setTeam2ReceiverDeuce('player4')
+                    await supabase.from('sets').update({ team2_receiver_deuce: 'player4' }).eq('id', setData.id)
+                  }} />
                 </>
               ) : (
                 <>
-                  <ChoiceBtn label={p1Name} accent="green" onClick={() => setTeam1ReceiverDeuce('player1')} />
-                  <ChoiceBtn label={p3Name} accent="green" onClick={() => setTeam1ReceiverDeuce('player3')} />
+                  <ChoiceBtn label={p1Name} accent="green" onClick={async () => {
+                    setTeam1ReceiverDeuce('player1')
+                    await supabase.from('sets').update({ team1_receiver_deuce: 'player1' }).eq('id', setData.id)
+                  }} />
+                  <ChoiceBtn label={p3Name} accent="green" onClick={async () => {
+                    setTeam1ReceiverDeuce('player3')
+                    await supabase.from('sets').update({ team1_receiver_deuce: 'player3' }).eq('id', setData.id)
+                  }} />
                 </>
               )}
             </div>
@@ -840,19 +853,50 @@ function StepContent({
   }
 
   if (step === 'point_winner') {
-    const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
+    const isUE = draft.outcome === 'unforced_error'
+    const isError = draft.outcome === 'error' || isUE
+    // For doubles UE: go to ue_player to ask who made it; otherwise set last_shot_player inline
+    const nextForWinner = (winner: 'team1' | 'team2', player: PlayerSlot) => {
+      if (isDoubles && isUE) {
+        onGo('ue_player', { point_winner: winner })
+      } else {
+        onGo('rally_length', { point_winner: winner, last_shot_player: isError ? (isDoubles ? null : player) : player })
+      }
+    }
     return (
       <StepCard title="Who won the point?">
         <div className="flex flex-col gap-2">
           {/* Team 1 — green, full width */}
-          <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo('rally_length', { point_winner: 'team1', last_shot_player: isError ? (!isDoubles ? 'player2' as PlayerSlot : null) : 'player1' as PlayerSlot })} />
+          <ChoiceBtn label={p1Name} accent="green" onClick={() => nextForWinner('team1', isError ? 'player2' : 'player1')} />
           {isDoubles && (
-            <ChoiceBtn label={p3Name} accent="green" onClick={() => onGo('rally_length', { point_winner: 'team1', last_shot_player: isError ? null : 'player3' as PlayerSlot })} />
+            <ChoiceBtn label={p3Name} accent="green" onClick={() => nextForWinner('team1', isError ? 'player2' : 'player3')} />
           )}
           {/* Team 2 — red, full width */}
-          <ChoiceBtn label={p2Name} accent="red" onClick={() => onGo('rally_length', { point_winner: 'team2', last_shot_player: isError ? (!isDoubles ? 'player1' as PlayerSlot : null) : 'player2' as PlayerSlot })} />
+          <ChoiceBtn label={p2Name} accent="red" onClick={() => nextForWinner('team2', isError ? 'player1' : 'player2')} />
           {isDoubles && (
-            <ChoiceBtn label={p4Name} accent="red" onClick={() => onGo('rally_length', { point_winner: 'team2', last_shot_player: isError ? null : 'player4' as PlayerSlot })} />
+            <ChoiceBtn label={p4Name} accent="red" onClick={() => nextForWinner('team2', isError ? 'player1' : 'player4')} />
+          )}
+        </div>
+      </StepCard>
+    )
+  }
+
+  if (step === 'ue_player') {
+    // draft.point_winner is the team that WON — so the error was by the other team
+    const errorTeam = draft.point_winner === 'team1' ? 'team2' : 'team1'
+    return (
+      <StepCard title="Who made the unforced error?">
+        <div className="flex flex-col gap-2">
+          {errorTeam === 'team2' ? (
+            <>
+              <ChoiceBtn label={p2Name} accent="red" onClick={() => onGo('rally_length', { last_shot_player: 'player2' as PlayerSlot })} />
+              <ChoiceBtn label={p4Name} accent="red" onClick={() => onGo('rally_length', { last_shot_player: 'player4' as PlayerSlot })} />
+            </>
+          ) : (
+            <>
+              <ChoiceBtn label={p1Name} accent="green" onClick={() => onGo('rally_length', { last_shot_player: 'player1' as PlayerSlot })} />
+              <ChoiceBtn label={p3Name} accent="green" onClick={() => onGo('rally_length', { last_shot_player: 'player3' as PlayerSlot })} />
+            </>
           )}
         </div>
       </StepCard>

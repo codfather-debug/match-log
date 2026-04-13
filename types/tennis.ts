@@ -71,6 +71,8 @@ export interface MatchSet {
   is_tiebreak: boolean
   is_super_tiebreak: boolean
   winner: Team | null
+  team1_receiver_deuce: 'player1' | 'player3' | null
+  team2_receiver_deuce: 'player2' | 'player4' | null
   games?: Game[]
 }
 
