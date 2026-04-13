@@ -306,39 +306,52 @@ export default function NewMatchPage() {
           {addPlayerError && <p className="text-xs text-red-400">{addPlayerError}</p>}
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{matchType === 'doubles' ? 'Team 1 · Player A' : isPractice ? 'You' : 'Player 1'}</p>
-              <Select value={player1} onValueChange={setPlayer1}>
-                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>{playerOptions}</SelectContent>
-              </Select>
-            </div>
-            {!isPractice && (
-            <div className="space-y-1">
-              <p className="text-xs text-zinc-500">{matchType === 'doubles' ? 'Team 2 · Player A' : 'Player 2'}</p>
-              <Select value={player2} onValueChange={setPlayer2}>
-                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>{playerOptions}</SelectContent>
-              </Select>
-            </div>
-            )}
-            {matchType === 'doubles' && (
-              <>
+            {/* Team 1 — green */}
+            <div className="space-y-2 rounded-xl border border-green-700/60 bg-green-900/30 p-3">
+              <p className="text-xs font-semibold text-green-400 uppercase tracking-wider">
+                {matchType === 'doubles' ? 'Team 1' : isPractice ? 'You' : 'Team 1'}
+              </p>
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-400">{matchType === 'doubles' ? 'Player A' : 'Player'}</p>
+                <Select value={player1} onValueChange={setPlayer1}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>{playerOptions}</SelectContent>
+                </Select>
+              </div>
+              {matchType === 'doubles' && (
                 <div className="space-y-1">
-                  <p className="text-xs text-zinc-500">Team 1 · Player B</p>
+                  <p className="text-xs text-zinc-400">Player B</p>
                   <Select value={player3} onValueChange={setPlayer3}>
                     <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                     <SelectContent>{playerOptions}</SelectContent>
                   </Select>
                 </div>
+              )}
+            </div>
+
+            {/* Team 2 — red */}
+            {!isPractice && (
+              <div className="space-y-2 rounded-xl border border-red-700/60 bg-red-900/30 p-3">
+                <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">
+                  {matchType === 'doubles' ? 'Team 2' : 'Team 2'}
+                </p>
                 <div className="space-y-1">
-                  <p className="text-xs text-zinc-500">Team 2 · Player B</p>
-                  <Select value={player4} onValueChange={setPlayer4}>
+                  <p className="text-xs text-zinc-400">{matchType === 'doubles' ? 'Player A' : 'Player'}</p>
+                  <Select value={player2} onValueChange={setPlayer2}>
                     <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
                     <SelectContent>{playerOptions}</SelectContent>
                   </Select>
                 </div>
-              </>
+                {matchType === 'doubles' && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-zinc-400">Player B</p>
+                    <Select value={player4} onValueChange={setPlayer4}>
+                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                      <SelectContent>{playerOptions}</SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
