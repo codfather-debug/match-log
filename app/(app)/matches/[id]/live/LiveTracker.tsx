@@ -62,8 +62,19 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const [saving, setSaving] = useState(false)
   const [lastUndo, setLastUndo] = useState<Point | null>(null)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
-  const [logDepth, setLogDepth] = useState({ rallyLength: true, shotDetail: true })
+  const [logDepth, setLogDepth] = useState<{ rallyLength: boolean; shotDetail: boolean }>(() => {
+    try { return JSON.parse(localStorage.getItem('matchlog_log_depth') ?? 'null') ?? { rallyLength: true, shotDetail: true } }
+    catch { return { rallyLength: true, shotDetail: true } }
+  })
   const [showSettings, setShowSettings] = useState(false)
+
+  function updateLogDepth(update: Partial<{ rallyLength: boolean; shotDetail: boolean }>) {
+    setLogDepth(prev => {
+      const next = { ...prev, ...update }
+      localStorage.setItem('matchlog_log_depth', JSON.stringify(next))
+      return next
+    })
+  }
   const [ending, setEnding] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -627,7 +638,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
                   <p className="text-xs text-zinc-500">{desc}</p>
                 </div>
                 <button
-                  onClick={() => setLogDepth(d => ({ ...d, [key]: !d[key] }))}
+                  onClick={() => updateLogDepth({ [key]: !logDepth[key] })}
                   className={`ml-4 w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${logDepth[key] ? 'bg-blue-600' : 'bg-zinc-600'}`}
                 >
                   <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${logDepth[key] ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -726,6 +737,30 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               onSave={savePoint}
               saving={saving}
             />
+
+            {/* Depth toggles — visible on serve placement so they're easy to reach between points */}
+            {step === 'serve_placement' && (
+              <div className="flex gap-2 pt-1">
+                {([
+                  { key: 'rallyLength' as const, label: 'Rally length' },
+                  { key: 'shotDetail' as const, label: 'Shot detail' },
+                ] as const).map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => updateLogDepth({ [key]: !logDepth[key] })}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      logDepth[key]
+                        ? 'border-blue-600 bg-blue-600/20 text-blue-300'
+                        : 'border-zinc-700 bg-zinc-800 text-zinc-500 line-through'
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${logDepth[key] ? 'bg-blue-400' : 'bg-zinc-600'}`} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

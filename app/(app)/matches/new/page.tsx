@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Plus, X } from 'lucide-react'
 import Link from 'next/link'
 import type { Player, MatchType } from '@/types/tennis'
@@ -16,9 +16,9 @@ export default function NewMatchPage() {
   const [players, setPlayers] = useState<Player[]>([])
   const [matchType, setMatchType] = useState<MatchType>('singles')
   const [player1, setPlayer1] = useState('')
-  const [player2, setPlayer2] = useState('')
-  const [player3, setPlayer3] = useState('')
-  const [player4, setPlayer4] = useState('')
+  const [player3, setPlayer3] = useState('')   // doubles partner (team 1 player B)
+  const [opp2Name, setOpp2Name] = useState('Opponent')
+  const [opp4Name, setOpp4Name] = useState('Opponent')
   const [sets, setSets] = useState<'3' | '5'>('3')
   const [tiebreak, setTiebreak] = useState(true)
   const [superTiebreak, setSuperTiebreak] = useState(false)
@@ -26,6 +26,19 @@ export default function NewMatchPage() {
   const [surface, setSurface] = useState<string>('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const [logDepth, setLogDepthState] = useState<{ rallyLength: boolean; shotDetail: boolean }>(() => {
+    try { return JSON.parse(localStorage.getItem('matchlog_log_depth') ?? 'null') ?? { rallyLength: true, shotDetail: true } }
+    catch { return { rallyLength: true, shotDetail: true } }
+  })
+
+  function setLogDepth(update: Partial<{ rallyLength: boolean; shotDetail: boolean }>) {
+    setLogDepthState(prev => {
+      const next = { ...prev, ...update }
+      localStorage.setItem('matchlog_log_depth', JSON.stringify(next))
+      return next
+    })
+  }
 
   // Inline add player
   const [showAddPlayer, setShowAddPlayer] = useState(false)
@@ -36,46 +49,18 @@ export default function NewMatchPage() {
 
   const [youPlayerId, setYouPlayerId] = useState<string | null>(null)
 
-  const opponentsFilled = useRef(false)
-
-  async function loadPlayers() {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data } = await supabase.from('players').select('*').eq('user_id', user.id).order('name')
-      setPlayers(data ?? [])
-    }
-  }
-
-  async function fillOpponents(currentPlayers: Player[]) {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    let list = [...currentPlayers]
-    for (const name of ['Opponent 1', 'Opponent 2']) {
-      if (!list.find(p => p.name === name)) {
-        const { data } = await supabase.from('players').insert({ user_id: user.id, name }).select().single()
-        if (data) list = [...list, data]
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data } = await supabase.from('players').select('*').eq('user_id', user.id).order('name')
+        setPlayers(data ?? [])
       }
     }
-    list.sort((a, b) => a.name.localeCompare(b.name))
-    setPlayers(list)
-    const opp1 = list.find(p => p.name === 'Opponent 1')
-    const opp2 = list.find(p => p.name === 'Opponent 2')
-    if (opp1) setPlayer2(opp1.id)
-    if (opp2) setPlayer4(opp2.id)
-  }
-
-  useEffect(() => {
-    loadPlayers()
+    load()
     setYouPlayerId(localStorage.getItem('matchlog_you_player_id'))
   }, [])
-
-  useEffect(() => {
-    if (matchType !== 'doubles' || opponentsFilled.current || players.length === 0) return
-    opponentsFilled.current = true
-    fillOpponents(players)
-  }, [matchType, players.length])
 
   async function handleAddPlayer(e: React.FormEvent) {
     e.preventDefault()
@@ -89,11 +74,7 @@ export default function NewMatchPage() {
       .insert({ user_id: user!.id, name: newPlayerName.trim(), handedness: newPlayerHand || null })
       .select()
       .single()
-    if (error) {
-      setAddPlayerError(error.message)
-      setAddingPlayer(false)
-      return
-    }
+    if (error) { setAddPlayerError(error.message); setAddingPlayer(false); return }
     setPlayers((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
     setNewPlayerName('')
     setNewPlayerHand('')
@@ -101,17 +82,27 @@ export default function NewMatchPage() {
     setAddingPlayer(false)
   }
 
+  async function resolveOpponent(name: string, supabase: ReturnType<typeof createClient>, userId: string): Promise<string | null> {
+    const trimmed = (name || 'Opponent').trim()
+    const existing = players.find(p => p.name.toLowerCase() === trimmed.toLowerCase())
+    if (existing) return existing.id
+    const { data } = await supabase.from('players').insert({ user_id: userId, name: trimmed }).select().single()
+    if (data) setPlayers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    return data?.id ?? null
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!player1) return setError('Select at least yourself as Player 1.')
-    if (matchType !== 'practice' && !player2) return setError('Select both players.')
-    if (matchType !== 'practice' && player1 === player2) return setError('Players must be different.')
-    if (matchType === 'doubles' && (!player3 || !player4)) return setError('Select all 4 players for doubles.')
+    if (!player1) return setError('Select yourself as Player 1.')
+    if (matchType === 'doubles' && !player3) return setError('Select your partner for Team 1.')
 
     setLoading(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
+
+    const p2id = matchType !== 'practice' ? await resolveOpponent(opp2Name, supabase, user!.id) : null
+    const p4id = matchType === 'doubles' ? await resolveOpponent(opp4Name, supabase, user!.id) : null
 
     // Fetch weather silently — never blocks match creation
     let weather = null
@@ -139,7 +130,7 @@ export default function NewMatchPage() {
         precip_in: c.precipitation,
         condition: WMO[c.weather_code] ?? 'Unknown',
       }
-    } catch { /* geolocation denied or fetch failed — no weather */ }
+    } catch { /* geolocation denied or fetch failed */ }
 
     const { data: match, error: matchErr } = await supabase
       .from('matches')
@@ -149,9 +140,9 @@ export default function NewMatchPage() {
         status: 'in_progress',
         format: { sets: Number(sets), tiebreak, superTiebreak, noAd },
         player1_id: player1,
-        player2_id: matchType === 'practice' ? null : player2,
+        player2_id: p2id,
         player3_id: matchType === 'doubles' ? player3 : null,
-        player4_id: matchType === 'doubles' ? player4 : null,
+        player4_id: p4id,
         started_at: new Date().toISOString(),
         weather,
         surface: surface || null,
@@ -192,11 +183,7 @@ export default function NewMatchPage() {
   const playerOptions = sortedPlayers.map((p) => {
     const isYou = p.id === youPlayerId
     return (
-      <SelectItem
-        key={p.id}
-        value={p.id}
-        className={isYou ? 'text-amber-400 font-medium' : ''}
-      >
+      <SelectItem key={p.id} value={p.id} className={isYou ? 'text-amber-400 font-medium' : ''}>
         {isYou ? `★ ${p.name}` : p.name}
       </SelectItem>
     )
@@ -258,7 +245,6 @@ export default function NewMatchPage() {
         <div className="space-y-3">
           <Label>Players</Label>
 
-          {/* Inline add player — div to avoid nested form */}
           {showAddPlayer ? (
             <div className="rounded-md border border-zinc-700 bg-zinc-900/50 p-3 space-y-2">
               <Input
@@ -329,26 +315,20 @@ export default function NewMatchPage() {
               )}
             </div>
 
-            {/* Team 2 — red */}
+            {/* Team 2 — red, free-text opponent with autocomplete */}
             {!isPractice && (
               <div className="space-y-2 rounded-xl border border-red-700 p-3" style={{ backgroundColor: 'rgba(127, 29, 29, 0.45)' }}>
                 <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">
-                  {matchType === 'doubles' ? 'Team 2' : 'Team 2'}
+                  {matchType === 'doubles' ? 'Team 2' : 'Opponent'}
                 </p>
                 <div className="space-y-1">
-                  <p className="text-xs text-zinc-400">{matchType === 'doubles' ? 'Player A' : 'Player'}</p>
-                  <Select value={player2} onValueChange={setPlayer2}>
-                    <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                    <SelectContent>{playerOptions}</SelectContent>
-                  </Select>
+                  <p className="text-xs text-zinc-400">{matchType === 'doubles' ? 'Player A' : 'Name'}</p>
+                  <OpponentInput value={opp2Name} onChange={setOpp2Name} players={players} />
                 </div>
                 {matchType === 'doubles' && (
                   <div className="space-y-1">
                     <p className="text-xs text-zinc-400">Player B</p>
-                    <Select value={player4} onValueChange={setPlayer4}>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                      <SelectContent>{playerOptions}</SelectContent>
-                    </Select>
+                    <OpponentInput value={opp4Name} onChange={setOpp4Name} players={players} />
                   </div>
                 )}
               </div>
@@ -363,39 +343,51 @@ export default function NewMatchPage() {
         )}
 
         {/* Format */}
-        {!isPractice && <div className="space-y-3">
-          <Label>Format</Label>
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <p className="text-xs text-zinc-500">Sets</p>
-              <div className="flex gap-2">
-                {(['3', '5'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSets(s)}
-                    className={`flex-1 rounded-md border py-2 text-sm transition-colors ${
-                      sets === s
-                        ? 'border-zinc-100 bg-zinc-800 text-zinc-100'
-                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                    }`}
-                  >
-                    Best of {s}
-                  </button>
-                ))}
+        {!isPractice && (
+          <div className="space-y-3">
+            <Label>Format</Label>
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">Sets</p>
+                <div className="flex gap-2">
+                  {(['3', '5'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSets(s)}
+                      className={`flex-1 rounded-md border py-2 text-sm transition-colors ${
+                        sets === s
+                          ? 'border-zinc-100 bg-zinc-800 text-zinc-100'
+                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }`}
+                    >
+                      Best of {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Toggle label="Tiebreak at 6-6" value={tiebreak} onChange={setTiebreak} />
+                <Toggle label="Super tiebreak (final set)" value={superTiebreak} onChange={setSuperTiebreak} />
+                <Toggle label="No-Ad scoring" value={noAd} onChange={setNoAd} />
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Toggle label="Tiebreak at 6-6" value={tiebreak} onChange={setTiebreak} />
-              <Toggle label="Super tiebreak (final set)" value={superTiebreak} onChange={setSuperTiebreak} />
-              <Toggle label="No-Ad scoring" value={noAd} onChange={setNoAd} />
-            </div>
           </div>
-        </div>}
+        )}
+
+        {/* Point logging depth */}
+        <div className="space-y-2">
+          <Label>Point logging</Label>
+          <p className="text-xs text-zinc-500">Choose which steps to log per point — can also be changed mid-match.</p>
+          <div className="flex flex-col gap-2">
+            <Toggle label="Rally length" value={logDepth.rallyLength} onChange={(v) => setLogDepth({ rallyLength: v })} />
+            <Toggle label="Shot detail (type, direction, error location)" value={logDepth.shotDetail} onChange={(v) => setLogDepth({ shotDetail: v })} />
+          </div>
+        </div>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
-        <Button type="submit" className="w-full" size="lg" disabled={loading || players.length === 0 || (matchType !== 'practice' && players.length < 2)}>
+        <Button type="submit" className="w-full" size="lg" disabled={loading || players.length === 0 || !player1}>
           {loading ? 'Starting…' : 'Start match'}
         </Button>
       </form>
@@ -415,5 +407,38 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
         <div className={`m-0.5 h-4 w-4 rounded-full bg-zinc-950 transition-transform ${value ? 'translate-x-4' : ''}`} />
       </div>
     </button>
+  )
+}
+
+function OpponentInput({ value, onChange, players }: { value: string; onChange: (v: string) => void; players: Player[] }) {
+  const [open, setOpen] = useState(false)
+  const suggestions = players.filter(
+    p => !value || p.name.toLowerCase().includes(value.toLowerCase())
+  ).slice(0, 6)
+
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="h-9 w-full rounded-md border border-zinc-700 bg-transparent px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-zinc-700 bg-zinc-900 shadow-lg">
+          {suggestions.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={() => { onChange(p.name); setOpen(false) }}
+              className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800 first:rounded-t-md last:rounded-b-md"
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
