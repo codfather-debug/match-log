@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2, Share2, Mic, MicOff } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, RotateCcw, StopCircle, Trash2, Share2, Mic, MicOff, Settings } from 'lucide-react'
 import Link from 'next/link'
 import {
   gameWinner,
@@ -62,6 +62,8 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
   const [saving, setSaving] = useState(false)
   const [lastUndo, setLastUndo] = useState<Point | null>(null)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [logDepth, setLogDepth] = useState({ rallyLength: true, shotDetail: true })
+  const [showSettings, setShowSettings] = useState(false)
   const [ending, setEnding] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -136,23 +138,39 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
     setStep(nextStep)
   }
 
+  function activeStepSequence(d: PointDraft): Step[] {
+    const isError = d.outcome === 'error' || d.outcome === 'unforced_error'
+    return [
+      'serve_placement', 'serve_result', 'point_winner',
+      ...(isDoubles && d.outcome === 'unforced_error' ? ['ue_player' as Step] : []),
+      ...(logDepth.rallyLength ? ['rally_length' as Step] : []),
+      ...(logDepth.shotDetail ? [
+        ...(isError ? ['error_direction' as Step] : []),
+        'shot_type' as Step,
+        ...(!isError ? ['winner_direction' as Step] : []),
+      ] : []),
+    ]
+  }
+
+  function smartGo(nextStep: Step, update: Partial<PointDraft>) {
+    const merged = { ...draft, ...update }
+    const active = activeStepSequence(merged)
+    if (active.includes(nextStep)) { go(nextStep, update); return }
+    const all: Step[] = ['serve_placement','serve_result','point_winner','ue_player','rally_length','error_direction','shot_type','winner_direction']
+    const nextEnabled = active.find(s => all.indexOf(s) > all.indexOf(nextStep))
+    if (nextEnabled) { go(nextEnabled, update) } else { setDraft(d => ({ ...d, ...update })); savePoint(merged) }
+  }
+
   function handleFault() {
     setDraft((d) => ({ ...d, serve_result: 'fault' }))
     setStep('fault_direction')
   }
 
   function back() {
-    if (step === 'winner_direction') return setStep('shot_type')
-    if (step === 'shot_type') {
-      const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
-      return setStep(isError ? 'error_direction' : 'rally_length')
-    }
-    if (step === 'error_direction') return setStep('rally_length')
-    if (step === 'rally_length') return setStep(isDoubles && draft.outcome === 'unforced_error' ? 'ue_player' : 'point_winner')
-    if (step === 'ue_player') return setStep('point_winner')
-    if (step === 'point_winner') return setStep('serve_result')
-    if (step === 'serve_result') return setStep('serve_placement')
     if (step === 'fault_direction') { setDraft(d => ({ ...d, serve_result: null })); return setStep('serve_placement') }
+    const active = activeStepSequence(draft)
+    const idx = active.indexOf(step)
+    if (idx > 0) setStep(active[idx - 1])
   }
 
   async function savePoint(finalDraft: PointDraft) {
@@ -451,6 +469,12 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               >
                 <Share2 className="h-3.5 w-3.5" />
               </button>
+              <button
+                onClick={() => setShowSettings(v => !v)}
+                className={`flex items-center gap-1 text-xs transition-colors ${showSettings ? 'text-zinc-100' : 'text-zinc-400 hover:text-zinc-100'}`}
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
               {lastUndo && (
                 <button onClick={undoLastPoint} className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-100">
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -584,6 +608,36 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
         </div>
       )}
 
+      {/* Log depth settings */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60" onClick={() => setShowSettings(false)}>
+          <div className="rounded-t-2xl border-t border-zinc-700 bg-zinc-900 p-6 space-y-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-zinc-100">Log depth</p>
+              <button onClick={() => setShowSettings(false)} className="text-zinc-500 hover:text-zinc-100 text-lg leading-none">✕</button>
+            </div>
+            <p className="text-xs text-zinc-500 -mt-2">Toggle off to skip optional steps for faster logging</p>
+            {([
+              { key: 'rallyLength' as const, label: 'Rally length', desc: 'Number of shots in the rally' },
+              { key: 'shotDetail' as const, label: 'Shot detail', desc: 'Shot type, error direction, winner direction' },
+            ]).map(({ key, label, desc }) => (
+              <label key={key} className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <p className="text-sm text-zinc-200">{label}</p>
+                  <p className="text-xs text-zinc-500">{desc}</p>
+                </div>
+                <button
+                  onClick={() => setLogDepth(d => ({ ...d, [key]: !d[key] }))}
+                  className={`ml-4 w-11 h-6 rounded-full transition-colors relative flex-shrink-0 ${logDepth[key] ? 'bg-blue-600' : 'bg-zinc-600'}`}
+                >
+                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${logDepth[key] ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Step logger */}
       <div className="mx-auto w-full max-w-md flex-1 px-4 pb-8 pt-4">
         {!serverConfirmed ? (
@@ -667,7 +721,7 @@ export function LiveTracker({ match }: { match: Match & { sets: (MatchSet & { ga
               p4Name={p4Name}
               isDoubles={isDoubles}
               server={server}
-              onGo={go}
+              onGo={smartGo}
               onFault={handleFault}
               onSave={savePoint}
               saving={saving}
@@ -907,32 +961,40 @@ function StepContent({
     const isError = draft.outcome === 'error' || draft.outcome === 'unforced_error'
     const nextStep: Step = isError ? 'error_direction' : 'shot_type'
     return (
-      <StepCard title="Rally length" onSkip={() => onGo(nextStep, { rally_length: draft.rally_length || 0 })} onEnd={() => onSave(draft)}>
-        <div className="space-y-3">
-          <div className="grid grid-cols-5 gap-1.5">
-            {[1,2,3,4,5,6,7,8,9,10].map((n) => (
-              <button
-                key={n}
-                onClick={() => setDraft((d) => ({ ...d, rally_length: n }))}
-                className={`rounded-md border py-3 text-base font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center justify-center gap-4">
-            <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
-            <span className="w-8 text-center text-lg font-bold">{draft.rally_length}</span>
-            <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
-          </div>
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-zinc-200">Rally length</p>
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => onGo(nextStep, { rally_length: draft.rally_length || 0 })}
-            className="w-full rounded-lg border border-zinc-600 bg-zinc-800 py-3.5 text-base font-semibold text-zinc-100 hover:bg-zinc-700 transition-colors"
+            className="rounded-lg border border-zinc-600 bg-zinc-800 py-3 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 transition-colors active:scale-95"
           >
             {draft.rally_length > 0 ? 'Next →' : 'Skip'}
           </button>
+          <button
+            onClick={() => onSave(draft)}
+            className="rounded-lg border border-amber-600/60 py-3 text-sm font-semibold text-amber-300 hover:bg-amber-900/30 transition-colors active:scale-95"
+            style={{ backgroundColor: 'rgba(120,53,15,0.3)' }}
+          >
+            End Point
+          </button>
         </div>
-      </StepCard>
+        <div className="grid grid-cols-5 gap-1.5">
+          {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+            <button
+              key={n}
+              onClick={() => setDraft((d) => ({ ...d, rally_length: n }))}
+              className={`rounded-md border py-3 text-base font-medium transition-colors ${draft.rally_length === n ? 'border-white bg-zinc-700 text-white' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center justify-center gap-4">
+          <button onClick={() => setDraft((d) => ({ ...d, rally_length: Math.max(0, d.rally_length - 1) }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">−</button>
+          <span className="w-8 text-center text-lg font-bold">{draft.rally_length}</span>
+          <button onClick={() => setDraft((d) => ({ ...d, rally_length: d.rally_length + 1 }))} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 hover:bg-zinc-800">+</button>
+        </div>
+      </div>
     )
   }
 
