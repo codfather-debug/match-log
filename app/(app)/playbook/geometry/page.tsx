@@ -10,7 +10,7 @@ import { ArrowLeft } from 'lucide-react';
 
 type Mode = 'singles' | 'doubles';
 type Preset = 'cc' | 'dtl' | null;
-type ErrLevel = 0 | 0.05 | 0.1;
+type ErrLevel = 0 | 1 | 2 | 3 | 5; // degrees of direction error
 type Pt = { x: number; y: number };
 type PlayerId = 'A' | 'B' | 'A1' | 'A2' | 'B1' | 'B2';
 type DragId = 'ball' | 'target' | PlayerId;
@@ -106,6 +106,63 @@ function inBox(p: Pt, s: number, mode: Mode) {
   return inX && inY;
 }
 
+/**
+ * Direction-only error: the ball leaves the racquet anywhere within ±deg of the intended
+ * direction and travels the same length L. Returns how often it lands in / wide / long / in the net.
+ */
+function bandStats(b: Pt, theta: number, L: number, mode: Mode, deg: number) {
+  const s = sideSign(b);
+  const { l, r } = SIDES[mode];
+  const delta = toRad(deg);
+  const N = 241;
+  let wide = 0, long = 0, net = 0;
+  for (let i = 0; i < N; i++) {
+    const phi = theta - delta + (2 * delta * i) / (N - 1);
+    const dd = dirOf(phi, s);
+    const p = along(b, dd, L);
+    if (L < (NET_Y - b.y) / dd.y) net++;
+    else if (p.x < l || p.x > r) wide++;
+    else if (s === 1 ? p.y < 0 : p.y > LEN) long++;
+  }
+  const nets = [-delta, 0, delta].map(k => {
+    const dd = dirOf(theta + k, s);
+    return netHeightAt(along(b, dd, (NET_Y - b.y) / dd.y).x, mode);
+  });
+  const pct = (n: number) => (100 * n) / N;
+  return {
+    delta,
+    lateral: L * Math.tan(delta),
+    pctIn: pct(N - wide - long - net),
+    pctWide: pct(wide),
+    pctLong: pct(long),
+    pctNet: pct(net),
+    netLo: Math.min(...nets),
+    netHi: Math.max(...nets),
+  };
+}
+
+/** Crosscourt vs down-the-line from the current contact point, both aimed 3 ft inside the corner. */
+function compareShots(b: Pt, mode: Mode, deg: number) {
+  const s = sideSign(b);
+  const farY = s === 1 ? 0 : LEN;
+  const one = (p: 'cc' | 'dtl') => {
+    const { theta, L } = shotTo(b, presetTarget(b, p, mode));
+    const d = dirOf(theta, s);
+    const toBaseline = Math.abs(farY - b.y) / Math.cos(theta); // along the path to the far baseline
+    const netX = along(b, d, (NET_Y - b.y) / d.y).x;
+    return { theta, L, toBaseline, netH: netHeightAt(netX, mode), band: bandStats(b, theta, L, mode, deg) };
+  };
+  const cc = one('cc');
+  const dtl = one('dtl');
+  return {
+    cc,
+    dtl,
+    extraDepthFt: cc.toBaseline - dtl.toBaseline,
+    extraDepthPct: (100 * (cc.toBaseline - dtl.toBaseline)) / dtl.toBaseline,
+    widthGain: cc.band.pctIn - dtl.band.pctIn,
+  };
+}
+
 function analyze(b: Pt, theta: number, L: number, mode: Mode, err: ErrLevel) {
   const s = sideSign(b);
   const d = dirOf(theta, s);
@@ -127,36 +184,7 @@ function analyze(b: Pt, theta: number, L: number, mode: Mode, err: ErrLevel) {
   const baseMargin = s === 1 ? T.y : LEN - T.y; // negative = long
   const room = box.reaches ? box.tOut - L : 0;
 
-  // Error band: direction ±atan(p), depth ±p·L
-  let band: null | {
-    delta: number; lateral: number; depth: number; pctOut: number; netLo: number; netHi: number;
-  } = null;
-  if (err > 0) {
-    const delta = Math.atan(err);
-    const N = 41;
-    let out = 0;
-    for (let i = 0; i < N; i++) {
-      const phi = theta - delta + (2 * delta * i) / (N - 1);
-      const dd = dirOf(phi, s);
-      const tn = (NET_Y - b.y) / dd.y;
-      for (let j = 0; j < N; j++) {
-        const rr = L * (1 - err) + (2 * err * L * j) / (N - 1);
-        if (rr < tn || !inBox(along(b, dd, rr), s, mode)) out++;
-      }
-    }
-    const nets = [-delta, 0, delta].map(k => {
-      const dd = dirOf(theta + k, s);
-      return netHeightAt(along(b, dd, (NET_Y - b.y) / dd.y).x, mode);
-    });
-    band = {
-      delta,
-      lateral: L * err,
-      depth: L * err,
-      pctOut: (100 * out) / (N * N),
-      netLo: Math.min(...nets),
-      netHi: Math.max(...nets),
-    };
-  }
+  const band = err > 0 ? bandStats(b, theta, L, mode, err) : null;
 
   // Recovery hint: bisect the opponent's reply angle (from landing spot to the hitter's baseline corners)
   const nearY = s === 1 ? LEN : 0;
@@ -169,6 +197,16 @@ function analyze(b: Pt, theta: number, L: number, mode: Mode, err: ErrLevel) {
   const recover = tr > 0 ? along(T, u, tr) : null;
 
   return { s, d, T, tNet, netPt, netH, aroundPost, box, exitPt, short, landIn, sideMargin, baseMargin, room, band, c1, c2, recover };
+}
+
+function arcPath(b: Pt, s: number, a0: number, a1: number, rad: number) {
+  const n = 32;
+  const pts: string[] = [];
+  for (let i = 0; i <= n; i++) {
+    const p = along(b, dirOf(a0 + ((a1 - a0) * i) / n, s), rad);
+    pts.push(`${p.x.toFixed(2)},${p.y.toFixed(2)}`);
+  }
+  return `M${pts.join('L')}`;
 }
 
 function sectorPath(b: Pt, s: number, a0: number, a1: number, r0: number, r1: number) {
@@ -199,11 +237,14 @@ export default function ShotGeometryPage() {
   const [showTraj, setShowTraj] = useState(true);
   const [showRecover, setShowRecover] = useState(false);
   const [showMoves, setShowMoves] = useState(true);
+  const [showCompare, setShowCompare] = useState(false);
   const [pos, setPos] = useState<Record<PlayerId, Pt>>(DEFAULT_POS);
   const [ghost, setGhost] = useState<Partial<Record<PlayerId, Pt>>>({});
   const [drag, setDrag] = useState<DragId | null>(null);
 
   const g = useMemo(() => analyze(ball, shot.theta, shot.L, mode, err), [ball, shot, mode, err]);
+  const cmpDeg = err || 3;
+  const cmp = useMemo(() => compareShots(ball, mode, cmpDeg), [ball, mode, cmpDeg]);
   const { l, r } = SIDES[mode];
 
   // ── helpers ──
@@ -331,13 +372,21 @@ export default function ShotGeometryPage() {
               setShot(sh => ({ ...sh, L: v }));
             }}
           />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-bold text-zinc-300">Error band</p>
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between">
+              <p className="text-xs font-bold text-zinc-300">Direction error</p>
+              <p className="text-[11px] text-zinc-500">how far off your aim the ball can leave</p>
+            </div>
             <Segmented
-              compact
               value={String(err)}
               onChange={v => setErr(Number(v) as ErrLevel)}
-              options={[{ v: '0', label: 'Off' }, { v: '0.05', label: '±5%' }, { v: '0.1', label: '±10%' }]}
+              options={[
+                { v: '0', label: 'Off' },
+                { v: '1', label: '±1°' },
+                { v: '2', label: '±2°' },
+                { v: '3', label: '±3°' },
+                { v: '5', label: '±5°' },
+              ]}
             />
           </div>
         </div>
@@ -346,6 +395,7 @@ export default function ShotGeometryPage() {
           <Toggle on={showTraj} onClick={() => setShowTraj(v => !v)} label={showTraj ? 'Trajectory on' : 'Trajectory hidden'} />
           <Toggle on={showRecover} onClick={() => setShowRecover(v => !v)} label="Recovery hint" />
           <Toggle on={showMoves} onClick={() => setShowMoves(v => !v)} label="Move arrows" />
+          <Toggle on={showCompare} onClick={() => setShowCompare(v => !v)} label="Compare CC / DTL" />
           <button onClick={randomShot} className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-bold text-amber-300 active:scale-95">
             🎲 Quiz shot
           </button>
@@ -419,15 +469,31 @@ export default function ShotGeometryPage() {
           <text x={mode === 'singles' ? 1.5 : -3} y={NET_Y - 0.9} fontSize={1.3} fill="#71717a" textAnchor="middle">3.5</text>
           <text x={mode === 'singles' ? 34.5 : 39} y={NET_Y - 0.9} fontSize={1.3} fill="#71717a" textAnchor="middle">3.5</text>
 
-          {/* Error band */}
+          {/* Compare overlay: both preset shots from the current contact point */}
+          {showTraj && showCompare && (
+            <g>
+              {([['cc', cmp.cc, '#c4b5fd', 'CC'], ['dtl', cmp.dtl, '#f9a8d4', 'DTL']] as const).map(([k, c, col, lab]) => {
+                const end = along(ball, dirOf(c.theta, g.s), c.L);
+                return (
+                  <g key={k}>
+                    <path d={sectorPath(ball, g.s, c.theta - c.band.delta, c.theta + c.band.delta, 0, c.L)} fill={col} opacity={0.1} />
+                    <line x1={ball.x} y1={ball.y} x2={end.x} y2={end.y} stroke={col} strokeWidth={0.25} strokeDasharray="1 0.6" />
+                    <circle cx={end.x} cy={end.y} r={0.5} fill={col} />
+                    <text x={end.x} y={end.y + g.s * 2.6} fontSize={1.5} fill={col} textAnchor="middle" fontWeight="bold">{lab}</text>
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
+          {/* Error band (direction only): cone of paths + landing arc, green = in, red = out */}
           {showTraj && g.band && (
             <g>
-              <path d={sectorPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, 0, shot.L * (1 + err))} fill="#e4e4e7" opacity={0.07} />
-              <path d={sectorPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, shot.L * (1 - err), shot.L * (1 + err))} fill="#f87171" opacity={0.45} />
+              <path d={sectorPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, 0, shot.L)} fill="#e4e4e7" opacity={0.1} />
+              <path d={arcPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, shot.L)} fill="none" stroke="#f87171" strokeWidth={0.9} strokeLinecap="round" />
               <path
-                d={sectorPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, shot.L * (1 - err), shot.L * (1 + err))}
-                fill="#4ade80"
-                opacity={0.55}
+                d={arcPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, shot.L)}
+                fill="none" stroke="#4ade80" strokeWidth={0.9}
                 clipPath={`url(#in-${uid})`}
               />
             </g>
@@ -578,23 +644,25 @@ export default function ShotGeometryPage() {
             {g.band && (
               <div className="col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-2">
                 <div className="flex items-baseline justify-between">
-                  <p className="text-xs font-bold text-zinc-400">±{err * 100}% error band</p>
-                  <p className={`text-lg font-black ${g.band.pctOut > 25 ? 'text-red-400' : g.band.pctOut > 5 ? 'text-amber-300' : 'text-lime-400'}`}>
-                    ~{g.band.pctOut.toFixed(0)}% out
+                  <p className="text-xs font-bold text-zinc-400">±{err}° direction error</p>
+                  <p className={`text-lg font-black ${g.band.pctIn < 75 ? 'text-red-400' : g.band.pctIn < 95 ? 'text-amber-300' : 'text-lime-400'}`}>
+                    {g.band.pctIn.toFixed(0)}% in
                   </p>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <Mini label="Side to side" value={`±${f1(g.band.lateral)} ft`} />
-                  <Mini label="Long / short" value={`±${f1(g.band.depth)} ft`} />
+                  <Mini label="Out wide / long" value={`${g.band.pctWide.toFixed(0)}% / ${g.band.pctLong.toFixed(0)}%`} />
                   <Mini label="Net height" value={`${g.band.netLo.toFixed(2)}–${g.band.netHi.toFixed(2)}`} />
                 </div>
                 <p className="text-[11px] text-zinc-500">
-                  Direction varies ±{toDeg(g.band.delta).toFixed(1)}°, depth ±{err * 100}% of shot length. Red = lands out.
+                  Same length, direction anywhere within ±{err}° of your aim. Green arc = lands in, red = out.
                 </p>
               </div>
             )}
           </div>
-        ) : (
+        ) : null}
+        {showTraj && <CompareCard cmp={cmp} deg={cmpDeg} mode={mode} defaulted={!err} />}
+        {!showTraj && (
           <button
             onClick={() => setShowTraj(true)}
             className="w-full rounded-2xl border border-dashed border-amber-400/30 bg-amber-400/[0.04] p-5 text-left space-y-1 active:scale-[0.99]"
@@ -615,7 +683,7 @@ export default function ShotGeometryPage() {
           {[
             { t: 'Crosscourt = lower net + more court', d: 'Corner-to-corner is ~82.5 ft in singles vs 78 ft down the line, and it crosses near the 3 ft center strap.' },
             { t: 'Down the line = higher net + less court', d: 'It crosses near the posts (up to 3.5 ft) with 4.5 fewer feet of court. Change direction here with purpose.' },
-            { t: 'Errors grow with distance', d: 'The same mis-hit spreads the ball wider on a longer shot. Aim a few feet inside the lines.' },
+            { t: 'Errors grow with distance', d: 'A 2° mis-hit is ~2.7 ft sideways over 78 ft — more on longer shots. Aim a few feet inside the lines.' },
             { t: 'Recover to the bisector', d: 'After you hit, move to the middle of your opponent’s possible replies — not the middle of the court.' },
           ].map(x => (
             <div key={x.t} className="px-4 py-3">
@@ -629,6 +697,74 @@ export default function ShotGeometryPage() {
           {mode === 'singles' ? ' (singles sticks)' : ''} to 3 ft at the center.
         </p>
       </section>
+    </div>
+  );
+}
+
+// ─── Crosscourt vs down the line ──────────────────────────────────────────────
+
+function CompareCard({ cmp, deg, mode, defaulted }: { cmp: ReturnType<typeof compareShots>; deg: number; mode: Mode; defaulted: boolean }) {
+  const { cc, dtl, extraDepthFt, extraDepthPct, widthGain } = cmp;
+  const sign = (n: number, d = 1) => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(d)}`;
+  const rows: { label: string; cc: string; dtl: string }[] = [
+    { label: 'Court to the baseline', cc: `${f1(cc.toBaseline)} ft`, dtl: `${f1(dtl.toBaseline)} ft` },
+    { label: `Lands in (±${deg}°)`, cc: `${cc.band.pctIn.toFixed(0)}%`, dtl: `${dtl.band.pctIn.toFixed(0)}%` },
+    { label: 'Net at crossing', cc: `${cc.netH.toFixed(2)} ft`, dtl: `${dtl.netH.toFixed(2)} ft` },
+    { label: 'Angle off straight', cc: `${Math.abs(toDeg(cc.theta)).toFixed(1)}°`, dtl: `${Math.abs(toDeg(dtl.theta)).toFixed(1)}°` },
+  ];
+  return (
+    <div className="rounded-2xl border border-violet-400/20 bg-violet-400/[0.04] p-4 space-y-3">
+      <div>
+        <p className="text-sm font-black text-zinc-100">Crosscourt vs Down the line</p>
+        <p className="text-[11px] text-zinc-500">
+          From the ball’s current spot, each aimed 3 ft inside its corner ({mode}).
+        </p>
+      </div>
+
+      <div className="rounded-xl bg-zinc-950/60 p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-violet-300">Depth — the big one</p>
+        <div className="flex items-baseline gap-2">
+          <p className="text-2xl font-black text-zinc-100 tabular-nums">{sign(extraDepthFt)} ft</p>
+          <p className="text-sm font-bold text-violet-300 tabular-nums">{sign(extraDepthPct)}% more court</p>
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          Same length of ball: down the line leaves ~{f1(dtl.toBaseline - dtl.L)} ft to spare before the baseline, crosscourt leaves ~{f1(cc.toBaseline - dtl.L)} ft.
+        </p>
+      </div>
+      <div className="rounded-xl bg-zinc-950/60 p-3">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-pink-300">Width</p>
+        <div className="flex items-baseline gap-2">
+          <p className="text-xl font-black text-zinc-100 tabular-nums">{sign(widthGain, 0)}%</p>
+          <p className="text-xs font-bold text-pink-300">chance of landing in with ±{deg}° error</p>
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          {Math.abs(widthGain) < 1
+            ? `About even: both shots keep the same ${INSET} ft sideline cushion, so direction error pushes them out equally often.`
+            : widthGain > 0
+              ? 'Crosscourt keeps more balls inside the sideline from this spot.'
+              : 'Down the line keeps more balls inside the sideline from this spot.'}
+        </p>
+      </div>
+
+      <div className="divide-y divide-zinc-800 rounded-xl border border-zinc-800 overflow-hidden text-sm">
+        <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+          <span />
+          <span className="w-16 text-right text-violet-300">CC</span>
+          <span className="w-16 text-right text-pink-300">DTL</span>
+        </div>
+        {rows.map(r => (
+          <div key={r.label} className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2">
+            <span className="text-zinc-400 text-xs">{r.label}</span>
+            <span className="w-16 text-right font-bold text-zinc-100 tabular-nums text-xs">{r.cc}</span>
+            <span className="w-16 text-right font-bold text-zinc-100 tabular-nums text-xs">{r.dtl}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-zinc-500">
+        Depth is the extra court along the diagonal: room to hit harder or deeper before it goes long. It is biggest
+        from a corner and shrinks to zero from the center mark.
+        {defaulted ? ' (Using ±3° until you pick a direction error.)' : ''}
+      </p>
     </div>
   );
 }
