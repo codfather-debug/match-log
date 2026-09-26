@@ -66,6 +66,14 @@ const BOOKS = [
     accent: 'border-emerald-400/20 hover:border-emerald-400/40',
     badge: 'text-emerald-400',
   },
+  {
+    href: '/playbook/geometry',
+    icon: '📐',
+    title: 'Shot Geometry',
+    sub: 'Interactive court · angles · net height · error bands',
+    accent: 'border-lime-400/20 hover:border-lime-400/40',
+    badge: 'text-lime-300',
+  },
 ];
 
 export default function PlaybookIndexPage() {
