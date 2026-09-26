@@ -4,17 +4,17 @@ import Link from 'next/link';
 import { ArrowLeft, Share2 } from 'lucide-react';
 import {
   CX, LEN, MAX_ANGLE, NET_Y, PLAYERS, RALLY_PRESETS, SERVE_PRESETS, SIDES, SVC, INSET,
-  analyze, along, clamp, compareShots, dirOf, dist, f1, hittingTeam, idealSpots, isDeuce, presetShot,
-  serveSpot, shotTo, sideSign, snapTargets, teamOf, toDeg, toRad,
-  type Comparison, type Kind, type Mode, type PlayerId, type Preset, type Pt,
+  analyze, along, clamp, compareShots, dirOf, dist, f1, hittingTeam, isDeuce, moveWords, play, presetShot,
+  returnReady, serveSpot, targetZone, NET_REACH, shotTo, shotWords, sideSign, snapTargets, teamOf, toDeg, toRad,
+  type Comparison, type Kind, type Mode, type PlayerId, type Preset, type Pt, type Reply,
 } from './geometry';
-import { SPINS, solveFlight, type Spin } from './flight';
-import { SideView } from './SideView';
 import { Chips, Collapsible, SectionLabel, Segmented, Slider, Stat, Toggle } from './ui';
 
 // ─── Shot Geometry ────────────────────────────────────────────────────────────
-// Interactive court (top-down, straight-line shots) plus a side view of the ball's flight.
+// Interactive top-down court. Simple view: where the shot goes, where to move, and the best reply.
+// Advanced view adds the numbers: angles, margins, net height, error bands, comparisons.
 
+type View = 'simple' | 'advanced';
 type DragId = 'ball' | 'target' | PlayerId;
 type Profile = { wide: number; long: number; net: number };
 type QuizState = {
@@ -33,6 +33,7 @@ const RECOVER_OK_FT = 3;
 const C = {
   in: '#4ade80',
   out: '#f87171',
+  reply: '#fbbf24',
   cmp: '#a78bfa',
   pos: '#38bdf8',
   recv: '#d4d4d8',
@@ -48,11 +49,26 @@ const DEFAULT_POS: Record<PlayerId, Pt> = {
   B2: { x: 25, y: 27 },
 };
 const DEFAULT_BALL: Pt = { x: 22, y: 79 };
-const SPEED = { rally: { def: 60, min: 30, max: 100 }, serve: { def: 105, min: 60, max: 140 } };
-const CONTACT_FT: Record<Kind, number> = { rally: 3, serve: 9 };
+
+const REPLY_WHY: Record<Reply['key'], string> = {
+  cc: 'the most court and the lowest part of the net',
+  mid: 'the safest ball from deep; it takes away the angles',
+  dtl: 'it changes direction, but the net is higher and the court shorter',
+  short: 'a short ball opens up the sharp angle',
+  lob: 'the net player covers the low shots, so go over them',
+};
+
+const REPLY_NOUN: Record<Reply['key'], string> = {
+  cc: 'the crosscourt',
+  dtl: 'the line',
+  mid: 'the middle',
+  short: 'the short angle',
+  lob: 'the lob',
+};
 
 const PROFILE_KEY = 'shot-geometry-profile';
 const BEST_KEY = 'shot-geometry-quiz-best';
+const VIEW_KEY = 'shot-geometry-view';
 const store = {
   get(k: string) { try { return window.localStorage.getItem(k); } catch { return null; } },
   set(k: string, v: string | null) {
@@ -90,6 +106,17 @@ function arcPath(b: Pt, s: number, a0: number, a1: number, rad: number) {
   return `M${pts.join('L')}`;
 }
 
+/** Point `back` ft short of `to` along from→to, so arrowheads don't sit under a marker. */
+function shortOf(from: Pt, to: Pt, back: number): Pt {
+  const d = dist(from, to);
+  if (d <= back + 0.5) return to;
+  return { x: to.x - ((to.x - from.x) / d) * back, y: to.y - ((to.y - from.y) / d) * back };
+}
+
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+/** "move 4 ft to your left" — or "stay where you are" when there's nothing to do. */
+const go = (verb: string, where: string) => (where === 'stay where you are' ? where : `${verb} ${where}`);
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ShotGeometryPage() {
@@ -97,15 +124,14 @@ export default function ShotGeometryPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const lastSnap = useRef<string | null>(null);
 
+  const [view, setView] = useState<View>('simple');
   const [kind, setKind] = useState<Kind>('rally');
   const [mode, setMode] = useState<Mode>('singles');
   const [ball, setBall] = useState<Pt>(DEFAULT_BALL);
   const [preset, setPreset] = useState<Preset | null>('cc');
   const [shot, setShot] = useState(() => shotTo(DEFAULT_BALL, presetShot('cc', DEFAULT_BALL, 'singles', 'rally').target));
   const [err, setErr] = useState(0);
-  const [speed, setSpeed] = useState(SPEED.rally.def);
-  const [spin, setSpin] = useState<Spin>('topspin');
-  const [showSpots, setShowSpots] = useState(false);
+  const [showSpots, setShowSpots] = useState(true);
   const [showCompare, setShowCompare] = useState(false);
   const [pos, setPos] = useState<Record<PlayerId, Pt>>(DEFAULT_POS);
   const [ghost, setGhost] = useState<Partial<Record<PlayerId, Pt>>>({});
@@ -113,55 +139,45 @@ export default function ShotGeometryPage() {
   const [quiz, setQuiz] = useState<QuizState | null>(null);
   const [score, setScore] = useState({ streak: 0, best: 0, rounds: 0, perfect: 0 });
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [clearanceGoal, setClearanceGoal] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   // ── derived ──
+  const simple = view === 'simple';
   const g = useMemo(() => analyze(ball, shot.theta, shot.L, mode, kind, err), [ball, shot, mode, kind, err]);
-  const flight = useMemo(
-    () => solveFlight(shot.L, speed, CONTACT_FT[kind], spin, Math.max(g.tNet, 0), g.netH),
-    [shot.L, speed, kind, spin, g.tNet, g.netH],
-  );
+  const pl = useMemo(() => play(mode, kind, pos, ball, g), [mode, kind, pos, ball, g]);
   const cmpDeg = err || 3;
   const cmp = useMemo(
-    () => (showCompare && kind === 'rally' ? compareShots(ball, mode, cmpDeg) : null),
-    [showCompare, kind, ball, mode, cmpDeg],
+    () => (!simple && showCompare && kind === 'rally' ? compareShots(ball, mode, cmpDeg) : null),
+    [simple, showCompare, kind, ball, mode, cmpDeg],
   );
   const ids = PLAYERS[mode];
-  const hitTeam = hittingTeam(ids, pos, ball);
   const quizAsk = !!quiz && !quiz.revealed;
-  const spots = useMemo(
-    () => (showSpots || quiz?.revealed ? idealSpots(mode, pos, ball, g) : {}),
-    [showSpots, quiz?.revealed, mode, pos, ball, g],
-  );
+  const showPlay = !quizAsk && (simple || showSpots || !!quiz?.revealed);
 
-  const inNet = !g.short && !g.aroundPost && flight.clearance < 0;
   const verdict: { word: string; good: boolean; why: string } = g.short
     ? { word: 'NET', good: false, why: 'lands before the net' }
-    : flight.ok === 'tooShort'
-      ? { word: 'SHORT', good: false, why: `can’t carry ${f1(shot.L)} ft at ${speed} mph` }
-      : inNet
-        ? { word: 'NET', good: false, why: `too flat at ${speed} mph — add spin or slow down` }
-        : g.landIn
-          ? { word: 'IN', good: true, why: `${f1(g.room)} ft to spare before the ${g.box.exitLine}` }
-          : {
-              word: 'OUT',
-              good: false,
-              why: g.box.reaches && g.box.tOut > 0 ? `${f1(-g.room)} ft past the ${g.box.exitLine}` : 'never inside the lines',
-            };
+    : g.landIn
+      ? { word: 'IN', good: true, why: `${f1(g.room)} ft to spare before the ${g.box.exitLine}` }
+      : {
+          word: 'OUT',
+          good: false,
+          why: g.box.reaches && g.box.tOut > 0 ? `${f1(-g.room)} ft past the ${g.box.exitLine}` : 'never inside the lines',
+        };
   const pathColor = verdict.good ? C.in : C.out;
+  const blockedReplies = pl.replies.filter(r => r.blocked);
+  const poachTarget = pl.replies.find(r => r.key !== 'lob');
 
   // ── URL + saved state: read once on load ──
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const k: Kind = q.get('k') === 'serve' ? 'serve' : 'rally';
     const m: Mode = q.get('m') === 'd' ? 'doubles' : 'singles';
-    const bx = num(q, 'bx'), by = num(q, 'by'), a = num(q, 'a'), l = num(q, 'l');
-    const e = num(q, 'e'), v = num(q, 'v');
-    const sp = q.get('sp') as Spin | null;
+    const bx = num(q, 'bx'), by = num(q, 'by'), a = num(q, 'a'), l = num(q, 'l'), e = num(q, 'e');
     const p = q.get('p') as Preset | null;
+    const vw = q.get('view') ?? store.get(VIEW_KEY);
     /* eslint-disable react-hooks/set-state-in-effect -- one-time hydration from the URL */
+    if (vw === 'advanced' || vw === 'simple') setView(vw);
     setKind(k);
     setMode(m);
     if (bx !== null && by !== null) {
@@ -176,8 +192,6 @@ export default function ShotGeometryPage() {
       setShot(shotTo(b, presetShot('T', b, m, 'serve').target));
     }
     if (e !== null && ERR_LEVELS.includes(e)) setErr(e);
-    setSpeed(v !== null ? clamp(v, SPEED[k].min, SPEED[k].max) : SPEED[k].def);
-    if (sp && SPINS.some(s => s.v === sp)) setSpin(sp);
 
     const w = num(q, 'w'), lg = num(q, 'lg'), n = num(q, 'n');
     if (w !== null || lg !== null || n !== null) {
@@ -201,6 +215,7 @@ export default function ShotGeometryPage() {
     if (!ready || drag) return;
     const t = setTimeout(() => {
       const q = new URLSearchParams();
+      q.set('view', view);
       q.set('k', kind);
       q.set('m', mode === 'doubles' ? 'd' : 's');
       q.set('bx', f1(ball.x));
@@ -209,12 +224,10 @@ export default function ShotGeometryPage() {
       q.set('l', f1(shot.L));
       if (preset) q.set('p', preset);
       if (err) q.set('e', String(err));
-      q.set('v', String(speed));
-      q.set('sp', spin);
       window.history.replaceState(window.history.state, '', `${window.location.pathname}?${q}`);
     }, 300);
     return () => clearTimeout(t);
-  }, [ready, drag, kind, mode, ball, shot, preset, err, speed, spin]);
+  }, [ready, drag, view, kind, mode, ball, shot, preset, err]);
 
   useEffect(() => {
     if (!toast) return;
@@ -223,34 +236,68 @@ export default function ShotGeometryPage() {
   }, [toast]);
 
   // ── actions ──
+  const switchView = (v: View) => {
+    setView(v);
+    store.set(VIEW_KEY, v);
+  };
+
   const applyPreset = (p: Preset, b = ball, m = mode, k = kind) => {
     const { ball: nb, target } = presetShot(p, b, m, k);
+    const sh = shotTo(nb, target);
     setBall(nb);
     setPreset(p);
-    setShot(shotTo(nb, target));
+    setShot(sh);
+    return { nb, sh };
+  };
+
+  /** Serve formation: server at the ball, everyone else where they start the point. */
+  const serveFormation = (nb: Pt, sh: { theta: number; L: number }, m: Mode) => {
+    const list = PLAYERS[m];
+    const s = sideSign(nb);
+    const server = list
+      .filter(id => teamOf(id) === hittingTeam(list, pos, nb))
+      .reduce((a, c) => (dist(pos[c], nb) < dist(pos[a], nb) ? c : a));
+    const next = { ...pos, [server]: { x: nb.x + (nb.x >= CX ? 1.2 : -1.2) * s, y: nb.y + s * 1.5 } };
+    const pl2 = play(m, 'serve', next, nb, analyze(nb, sh.theta, sh.L, m, 'serve', 0));
+    const spots = { ...pl2.spots, [pl2.receiver]: returnReady(targetZone(nb, m, 'serve'), s) };
+    delete spots[server];
+    setGhost({});
+    setPos({ ...next, ...spots });
   };
 
   const switchMode = (m: Mode) => {
     setMode(m);
     setGhost({});
-    if (preset) applyPreset(preset, ball, m);
+    if (preset) {
+      const { nb, sh } = applyPreset(preset, ball, m);
+      if (kind === 'serve') serveFormation(nb, sh, m);
+    }
   };
 
   const switchKind = (k: Kind) => {
     if (k === kind) return;
     setKind(k);
     setGhost({});
-    setSpeed(SPEED[k].def);
     setShowCompare(false);
     const s = sideSign(ball);
     if (k === 'serve') {
-      applyPreset('T', serveSpot(s, true), mode, 'serve');
+      const { nb, sh } = applyPreset('T', serveSpot(s, true), mode, 'serve');
+      serveFormation(nb, sh, mode);
     } else {
       applyPreset('cc', s === 1 ? DEFAULT_BALL : { x: CX * 2 - DEFAULT_BALL.x, y: LEN - DEFAULT_BALL.y }, mode, 'rally');
     }
   };
 
-  const setServeSide = (deuce: boolean) => applyPreset(preset ?? 'T', serveSpot(sideSign(ball), deuce), mode, 'serve');
+  const setServeSide = (deuce: boolean) => {
+    const { nb, sh } = applyPreset(preset ?? 'T', serveSpot(sideSign(ball), deuce), mode, 'serve');
+    serveFormation(nb, sh, mode);
+  };
+
+  /** Move everyone to where they should be for this shot. */
+  const moveEveryone = () => {
+    setGhost(Object.fromEntries(ids.map(id => [id, pos[id]])));
+    setPos(ps => ({ ...ps, ...pl.spots }));
+  };
 
   const resetAll = () => {
     setKind('rally');
@@ -258,9 +305,6 @@ export default function ShotGeometryPage() {
     setPos(DEFAULT_POS);
     setGhost({});
     setErr(0);
-    setSpeed(SPEED.rally.def);
-    setSpin('topspin');
-    setClearanceGoal(null);
     applyPreset('cc', DEFAULT_BALL, mode, 'rally');
   };
 
@@ -289,7 +333,7 @@ export default function ShotGeometryPage() {
       const t = { x: l - 2.5 + Math.random() * (r - l + 5), y: farY + s * (-3 + Math.random() * 20) };
       const sh = shotTo(b, t);
       const test = analyze(b, sh.theta, sh.L, mode, 'rally', 0);
-      if (test.aroundPost || test.short || !test.recover) continue;
+      if (test.aroundPost || test.short) continue;
       setBall(b);
       setPreset(null);
       setShot(sh);
@@ -305,7 +349,7 @@ export default function ShotGeometryPage() {
     ? {
         inOut: g.landIn ? 'in' : 'out',
         net: netBucket(g.netH),
-        recoverMiss: quiz.recover && g.recover ? dist(quiz.recover, g.recover) : null,
+        recoverMiss: quiz.recover ? dist(quiz.recover, pl.recover) : null,
       }
     : null;
 
@@ -399,7 +443,10 @@ export default function ShotGeometryPage() {
   );
   const zoneRect = { x: g.z.x0, y: g.z.y0, width: g.z.x1 - g.z.x0, height: g.z.y1 - g.z.y0 };
   const showLines = !quizAsk;
+  const showNumbers = !simple && !quizAsk;
   const deuce = isDeuce(ball);
+  const teamColor = (id: PlayerId) => (teamOf(id) === pl.hit ? C.pos : C.recv);
+  const shownReplies = simple ? [pl.best] : pl.replies.filter(r => r.p >= 0.03);
 
   return (
     <div className="space-y-4 pb-6">
@@ -420,7 +467,15 @@ export default function ShotGeometryPage() {
       </div>
 
       <div className="space-y-2">
-        <h1 className="text-xl font-semibold text-zinc-100">Shot Geometry</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-zinc-100">Shot Geometry</h1>
+          <Segmented
+            className="w-44 shrink-0"
+            value={view}
+            onChange={v => switchView(v as View)}
+            options={[{ v: 'simple', label: 'Simple' }, { v: 'advanced', label: 'Advanced' }]}
+          />
+        </div>
         {!quiz && (
           <div className="grid grid-cols-2 gap-2">
             <Segmented value={kind} onChange={v => switchKind(v as Kind)} options={[{ v: 'rally', label: 'Rally' }, { v: 'serve', label: 'Serve' }]} />
@@ -435,8 +490,8 @@ export default function ShotGeometryPage() {
           <span className={`text-base font-black ${verdict.good ? 'text-green-400' : 'text-red-400'}`}>{verdict.word}</span>
           <span className="text-xs text-zinc-300 leading-snug">
             {verdict.why}
-            {!g.short && !g.aroundPost && flight.heightAtNet >= 0 && !inNet && ` · clears the net by ${f1(flight.clearance)} ft`}
-            {g.band && ` · ${g.band.pctIn.toFixed(0)}% in at ±${err}°`}
+            {!simple && !g.aroundPost && ` · net ${g.netH.toFixed(2)} ft`}
+            {!simple && g.band && ` · ${g.band.pctIn.toFixed(0)}% in at ±${err}°`}
           </span>
         </div>
       )}
@@ -462,9 +517,15 @@ export default function ShotGeometryPage() {
             <clipPath id={`in-${uid}`}>
               <rect {...zoneRect} />
             </clipPath>
-            <marker id={`arrow-${uid}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-              <path d="M0,0 L10,5 L0,10 z" fill="#e4e4e7" />
-            </marker>
+            {(['w', 'r', 'p'] as const).map(k => (
+              <marker
+                key={k}
+                id={`arrow-${k}-${uid}`}
+                viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" fill={k === 'w' ? '#e4e4e7' : k === 'r' ? C.reply : C.pos} />
+              </marker>
+            ))}
           </defs>
 
           {/* Surface + alleys */}
@@ -506,12 +567,16 @@ export default function ShotGeometryPage() {
               <circle cx={34.5} cy={NET_Y} r={0.4} fill="#a1a1aa" />
             </>
           )}
-          <text x={CX} y={NET_Y - 0.9} fontSize={1.5} fill="#a1a1aa" textAnchor="middle">3.0 ft</text>
-          <text x={mode === 'singles' ? 1.5 : -3} y={NET_Y - 0.9} fontSize={1.3} fill="#71717a" textAnchor="middle">3.5</text>
-          <text x={mode === 'singles' ? 34.5 : 39} y={NET_Y - 0.9} fontSize={1.3} fill="#71717a" textAnchor="middle">3.5</text>
+          {!simple && (
+            <>
+              <text x={CX} y={NET_Y - 0.9} fontSize={1.5} fill="#a1a1aa" textAnchor="middle">3.0 ft</text>
+              <text x={mode === 'singles' ? 1.5 : -3} y={NET_Y - 0.9} fontSize={1.3} fill="#71717a" textAnchor="middle">3.5</text>
+              <text x={mode === 'singles' ? 34.5 : 39} y={NET_Y - 0.9} fontSize={1.3} fill="#71717a" textAnchor="middle">3.5</text>
+            </>
+          )}
 
           {/* Compare overlay: crosscourt solid, down the line dashed */}
-          {showLines && cmp && (
+          {showNumbers && cmp && (
             <g>
               {([['cc', cmp.cc, 'CC', undefined], ['dtl', cmp.dtl, 'DTL', '1 0.6']] as const).map(([k, c, lab, dash]) => {
                 const end = along(ball, dirOf(c.theta, g.s), c.L);
@@ -528,7 +593,7 @@ export default function ShotGeometryPage() {
           )}
 
           {/* Error band: cone of paths + landing arc, green = in, red = out */}
-          {showLines && g.band && (
+          {showNumbers && g.band && (
             <g>
               <path d={sectorPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, 0, shot.L)} fill="#e4e4e7" opacity={0.1} />
               <path d={arcPath(ball, g.s, shot.theta - g.band.delta, shot.theta + g.band.delta, shot.L)} fill="none" stroke={C.out} strokeWidth={0.9} strokeLinecap="round" />
@@ -540,28 +605,24 @@ export default function ShotGeometryPage() {
             </g>
           )}
 
-          {/* Recovery bisector */}
-          {showLines && (showSpots || quiz?.revealed) && g.recover && (
-            <g>
-              <line x1={g.T.x} y1={g.T.y} x2={g.c1.x} y2={g.c1.y} stroke={C.pos} strokeWidth={0.15} strokeDasharray="0.6 0.6" opacity={0.5} />
-              <line x1={g.T.x} y1={g.T.y} x2={g.c2.x} y2={g.c2.y} stroke={C.pos} strokeWidth={0.15} strokeDasharray="0.6 0.6" opacity={0.5} />
-              <line x1={g.T.x} y1={g.T.y} x2={g.recover.x} y2={g.recover.y} stroke={C.pos} strokeWidth={0.2} opacity={0.8} />
-              {quiz?.revealed && <circle cx={g.recover.x} cy={g.recover.y} r={RECOVER_OK_FT} fill={C.pos} opacity={0.12} />}
-            </g>
-          )}
-
           {/* Trajectory */}
           {showLines && (
             <g>
-              <line x1={g.T.x} y1={g.T.y} x2={extEnd.x} y2={extEnd.y} stroke={pathColor} strokeWidth={0.25} strokeDasharray="0.9 0.7" opacity={0.5} />
+              {!simple && (
+                <line x1={g.T.x} y1={g.T.y} x2={extEnd.x} y2={extEnd.y} stroke={pathColor} strokeWidth={0.25} strokeDasharray="0.9 0.7" opacity={0.5} />
+              )}
+              {/* after the bounce, the ball carries on to where the receiver meets it */}
+              {showPlay && g.landIn && (
+                <line x1={g.T.x} y1={g.T.y} x2={pl.H.x} y2={pl.H.y} stroke={pathColor} strokeWidth={0.25} strokeDasharray="0.6 0.5" opacity={0.7} />
+              )}
               <line x1={ball.x} y1={ball.y} x2={g.T.x} y2={g.T.y} stroke={pathColor} strokeWidth={0.4} />
-              {g.exitPt && !g.landIn && (
+              {!simple && g.exitPt && !g.landIn && (
                 <g stroke={C.out} strokeWidth={0.35}>
                   <line x1={g.exitPt.x - 0.8} y1={g.exitPt.y - 0.8} x2={g.exitPt.x + 0.8} y2={g.exitPt.y + 0.8} />
                   <line x1={g.exitPt.x - 0.8} y1={g.exitPt.y + 0.8} x2={g.exitPt.x + 0.8} y2={g.exitPt.y - 0.8} />
                 </g>
               )}
-              {!g.aroundPost && (
+              {!simple && !g.aroundPost && (
                 <g>
                   <circle cx={g.netPt.x} cy={g.netPt.y} r={0.6} fill="#09090b" stroke="#fafafa" strokeWidth={0.2} />
                   <rect x={g.netPt.x - 3} y={NET_Y + g.s * 1.3 - 1.1} width={6} height={2.1} rx={0.5} fill="#09090b" opacity={0.8} />
@@ -575,29 +636,86 @@ export default function ShotGeometryPage() {
 
           {/* Quiz: aim line only as far as the net */}
           {quizAsk && (
-            <line x1={ball.x} y1={ball.y} x2={g.netPt.x} y2={g.netPt.y} stroke="#e4e4e7" strokeWidth={0.3} strokeDasharray="1 0.6" markerEnd={`url(#arrow-${uid})`} />
+            <line x1={ball.x} y1={ball.y} x2={g.netPt.x} y2={g.netPt.y} stroke="#e4e4e7" strokeWidth={0.3} strokeDasharray="1 0.6" markerEnd={`url(#arrow-w-${uid})`} />
           )}
 
-          {/* Ideal positions */}
-          {showLines &&
-            ids.map(id => {
-              const sp = spots[id];
-              if (!sp) return null;
-              const col = teamOf(id) === hitTeam ? C.pos : C.recv;
-              return (
-                <g key={`spot-${id}`} pointerEvents="none">
-                  <line x1={pos[id].x} y1={pos[id].y} x2={sp.x} y2={sp.y} stroke={col} strokeWidth={0.12} strokeDasharray="0.4 0.4" opacity={0.6} />
-                  <circle cx={sp.x} cy={sp.y} r={1.6} fill="none" stroke={col} strokeWidth={0.2} strokeDasharray="0.5 0.35" />
-                  <text x={sp.x} y={sp.y + 0.5} fontSize={1.3} fill={col} textAnchor="middle" fontWeight="bold">{id}</text>
+          {/* The play: likely replies, where everyone goes, poach */}
+          {showPlay && g.landIn && (
+            <g pointerEvents="none">
+              {shownReplies.map(rp => {
+                const top = rp === pl.best;
+                const end = shortOf(rp.from, rp.to, 0.6);
+                return (
+                  <g key={rp.key}>
+                    <line
+                      x1={rp.from.x} y1={rp.from.y} x2={end.x} y2={end.y}
+                      stroke={C.reply}
+                      strokeWidth={top ? 0.45 : 0.2}
+                      strokeDasharray={rp.blocked ? '0.5 0.5' : undefined}
+                      opacity={top ? 0.95 : 0.25 + rp.p}
+                      markerEnd={top ? `url(#arrow-r-${uid})` : undefined}
+                    />
+                    {!simple && (
+                      <text x={rp.to.x} y={rp.to.y + g.s * 2.2} fontSize={1.3} fill={C.reply} textAnchor="middle" fontWeight="bold" opacity={top ? 1 : 0.75}>
+                        {Math.round(rp.p * 100)}%{rp.blocked ? ' ✕' : ''}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+              {simple && (
+                <text x={pl.best.to.x} y={pl.best.to.y + g.s * 2.4} fontSize={1.4} fill={C.reply} textAnchor="middle" fontWeight="bold">
+                  shot back
+                </text>
+              )}
+
+              {ids.map(id => {
+                const sp = pl.spots[id];
+                if (!sp) return null;
+                const col = teamColor(id);
+                const from = pos[id];
+                const far = dist(from, sp) > 2.5;
+                return (
+                  <g key={`spot-${id}`}>
+                    {far && (
+                      <line
+                        x1={from.x} y1={from.y}
+                        {...(() => { const e = shortOf(from, sp, 1.9); return { x2: e.x, y2: e.y }; })()}
+                        stroke={id === pl.receiver ? '#e4e4e7' : col}
+                        strokeWidth={id === pl.receiver ? 0.3 : 0.18}
+                        strokeDasharray="0.6 0.45"
+                        markerEnd={`url(#arrow-${id === pl.receiver ? 'w' : 'p'}-${uid})`}
+                        opacity={0.85}
+                      />
+                    )}
+                    <circle cx={sp.x} cy={sp.y} r={1.6} fill="none" stroke={col} strokeWidth={0.22} strokeDasharray="0.5 0.35" />
+                    <text x={sp.x} y={sp.y + 0.5} fontSize={1.3} fill={col} textAnchor="middle" fontWeight="bold">{id}</text>
+                  </g>
+                );
+              })}
+
+              {pl.poach && pl.hitterPartner && (
+                <g>
+                  <line
+                    x1={pos[pl.hitterPartner].x} y1={pos[pl.hitterPartner].y}
+                    {...(() => { const e = shortOf(pos[pl.hitterPartner!], pl.poach!, 1.2); return { x2: e.x, y2: e.y }; })()}
+                    stroke={C.pos} strokeWidth={0.3} markerEnd={`url(#arrow-p-${uid})`}
+                  />
+                  <circle cx={pl.poach.x} cy={pl.poach.y} r={1} fill={C.pos} opacity={0.35} />
+                  <text x={pl.poach.x} y={pl.poach.y + g.s * 2.4} fontSize={1.3} fill={C.pos} textAnchor="middle" fontWeight="bold">
+                    poach
+                  </text>
                 </g>
-              );
-            })}
+              )}
+              {quiz?.revealed && <circle cx={pl.recover.x} cy={pl.recover.y} r={RECOVER_OK_FT} fill={C.pos} opacity={0.12} />}
+            </g>
+          )}
 
           {/* Players */}
           {ids.map(id => {
             const p = pos[id];
             const gp = ghost[id];
-            const col = teamOf(id) === hitTeam ? C.pos : C.recv;
+            const col = teamColor(id);
             const d = gp ? dist(gp, p) : 0;
             return (
               <g key={id}>
@@ -608,7 +726,7 @@ export default function ShotGeometryPage() {
                       x1={gp.x} y1={gp.y}
                       x2={p.x - ((p.x - gp.x) / d) * 1.9}
                       y2={p.y - ((p.y - gp.y) / d) * 1.9}
-                      stroke="#e4e4e7" strokeWidth={0.2} markerEnd={`url(#arrow-${uid})`} opacity={0.8}
+                      stroke="#e4e4e7" strokeWidth={0.2} markerEnd={`url(#arrow-w-${uid})`} opacity={0.6}
                     />
                   </>
                 )}
@@ -647,10 +765,14 @@ export default function ShotGeometryPage() {
         </svg>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 pt-2 pb-1 text-[11px] text-zinc-500">
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-lime-200" /> Ball</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-sky-400" /> Hitting team</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-zinc-300" /> Receiving team</span>
-          <span className="flex items-center gap-1.5"><span className="text-red-400 font-black">✕</span> Goes out</span>
+          {showPlay && (
+            <>
+              <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 bg-amber-400" /> Shot back</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-zinc-300" /> Where to be</span>
+            </>
+          )}
           {toast && <span className="ml-auto font-bold text-zinc-200">{toast}</span>}
         </div>
       </section>
@@ -670,7 +792,7 @@ export default function ShotGeometryPage() {
         />
       ) : (
         <>
-          {/* ── Shot controls ── */}
+          {/* ── Shot picker ── */}
           <section className="space-y-3">
             {kind === 'rally' ? (
               <Chips value={preset} onChange={v => applyPreset(v as Preset)} options={RALLY_PRESETS} />
@@ -685,169 +807,151 @@ export default function ShotGeometryPage() {
                 <Segmented className="flex-1" value={preset ?? ''} onChange={v => applyPreset(v as Preset)} options={SERVE_PRESETS} />
               </div>
             )}
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
-              <Slider
-                label="Aim"
-                value={angleDeg}
-                display={`${Math.abs(angleDeg).toFixed(0)}° ${Math.abs(angleDeg) < 0.5 ? 'straight' : angleDeg > 0 ? 'right →' : '← left'}`}
-                min={-MAX_ANGLE}
-                max={MAX_ANGLE}
-                step={0.5}
-                onChange={v => {
-                  setPreset(null);
-                  setShot(sh => ({ ...sh, theta: toRad(v) }));
-                }}
-              />
-              <Slider
-                label="Length"
-                value={shot.L}
-                display={`${shot.L.toFixed(0)} ft`}
-                min={20}
-                max={100}
-                step={0.5}
-                onChange={v => {
-                  setPreset(null);
-                  setShot(sh => ({ ...sh, L: v }));
-                }}
-              />
-            </div>
-          </section>
-
-          {/* ── Side view ── */}
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <SectionLabel>Over the net</SectionLabel>
-              <p className="text-[11px] text-zinc-500">side view · height exaggerated</p>
-            </div>
-            <SideView
-              flight={flight}
-              L={shot.L}
-              netDist={g.tNet}
-              netH={g.netH}
-              outAt={g.box.reaches && g.box.tOut > 0 ? g.box.tOut : null}
-              clearanceGoal={clearanceGoal}
-              inColor={pathColor}
-            />
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <Mini label="Net clearance" value={g.short || flight.heightAtNet < 0 ? '—' : `${f1(flight.clearance)} ft`} bad={inNet} />
-              <Mini label="Launch" value={`${flight.launchDeg.toFixed(1)}°`} />
-              <Mini label="Peak height" value={`${f1(flight.apex)} ft`} />
-            </div>
-            <Slider
-              label="Speed"
-              value={speed}
-              display={`${speed} mph`}
-              min={SPEED[kind].min}
-              max={SPEED[kind].max}
-              step={1}
-              onChange={setSpeed}
-            />
-            <Segmented value={spin} onChange={v => setSpin(v as Spin)} options={SPINS} />
-            {clearanceGoal !== null && (
-              <p className="text-[11px] text-sky-300">Dashed line: your {clearanceGoal} ft net-clearance target.</p>
+            {!simple && (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
+                <Slider
+                  label="Aim"
+                  value={angleDeg}
+                  display={`${Math.abs(angleDeg).toFixed(0)}° ${Math.abs(angleDeg) < 0.5 ? 'straight' : angleDeg > 0 ? 'right →' : '← left'}`}
+                  min={-MAX_ANGLE}
+                  max={MAX_ANGLE}
+                  step={0.5}
+                  onChange={v => {
+                    setPreset(null);
+                    setShot(sh => ({ ...sh, theta: toRad(v) }));
+                  }}
+                />
+                <Slider
+                  label="Length"
+                  value={shot.L}
+                  display={`${shot.L.toFixed(0)} ft`}
+                  min={20}
+                  max={100}
+                  step={0.5}
+                  onChange={v => {
+                    setPreset(null);
+                    setShot(sh => ({ ...sh, L: v }));
+                  }}
+                />
+              </div>
             )}
           </section>
 
-          {/* ── Settings ── */}
-          <Collapsible title="Settings" hint="error, positions, compare">
-            <div className="space-y-1.5">
-              <div className="flex items-baseline justify-between">
-                <p className="text-xs font-bold text-zinc-300">Direction error</p>
-                <p className="text-[11px] text-zinc-500">how far off your aim the ball can leave</p>
-              </div>
-              <Segmented
-                value={String(err)}
-                onChange={v => setErr(Number(v))}
-                options={ERR_LEVELS.map(e => ({ v: String(e), label: e ? `±${e}°` : 'Off' }))}
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Toggle on={showSpots} onClick={() => setShowSpots(v => !v)} label="Where to be" />
-              {kind === 'rally' && <Toggle on={showCompare} onClick={() => setShowCompare(v => !v)} label="Compare CC / DTL" />}
-              <button onClick={resetAll} className="rounded-full border border-zinc-800 px-3 py-1.5 text-xs font-bold text-zinc-400 active:scale-95">
-                Reset
-              </button>
-            </div>
-            <p className="text-[11px] text-zinc-500">
-              Drag the ball, the landing spot, or any player. The landing spot snaps to the standard targets.
-              {!profile && ' Tip: in Match Log, open Stats → UErrors → “Practice these misses” to load your own miss pattern.'}
-            </p>
-          </Collapsible>
-
-          {showSpots && (
-            <p className="-mt-2 px-1 text-[11px] text-zinc-500">
-              Dashed circles show where each player should be once the ball lands: the hitter recovers to the middle of the
-              opponent’s possible replies{mode === 'doubles' ? ', the net player shades toward the ball, and the other team covers the bounce and the middle' : ''}.
-            </p>
-          )}
-
-          {cmp && <CompareCard cmp={cmp} deg={cmpDeg} mode={mode} defaulted={!err} />}
-
-          {profile && (
-            <ProfileCard
-              profile={profile}
-              onApply={(deg, goal) => {
-                setErr(deg);
-                setClearanceGoal(goal);
-                if (goal !== null && spin === 'flat') setSpin('topspin');
-              }}
-              onClear={() => {
-                setProfile(null);
-                setClearanceGoal(null);
-                store.set(PROFILE_KEY, null);
-              }}
+          {/* ── The point, in plain words ── */}
+          {(simple || showSpots) && (
+            <PlayCard
+              verdictGood={verdict.good}
+              verdictWhy={verdict.why}
+              shotText={`${pl.hitter} hits ${shotWords(ball, g, kind)}`}
+              receiver={pl.receiver}
+              moveText={moveWords(pos[pl.receiver], pl.H)}
+              best={pl.best}
+              blocked={blockedReplies}
+              hitterPartner={pl.hitterPartner}
+              hitter={pl.hitter}
+              recoverText={moveWords(pos[pl.hitter], pl.recover)}
+              partnerText={pl.hitterPartner && pl.spots[pl.hitterPartner] ? moveWords(pos[pl.hitterPartner], pl.spots[pl.hitterPartner]!) : null}
+              poachText={pl.hitterPartner && pl.poach ? moveWords(pos[pl.hitterPartner], pl.poach) : null}
+              poachLabel={poachTarget?.label.toLowerCase() ?? ''}
+              receiverPartner={pl.receiverPartner}
+              receiverPartnerText={pl.receiverPartner && pl.spots[pl.receiverPartner] ? moveWords(pos[pl.receiverPartner], pl.spots[pl.receiverPartner]!) : null}
+              serve={kind === 'serve'}
+              onMoveEveryone={moveEveryone}
             />
           )}
 
-          {/* ── Details ── */}
-          <Collapsible title="Details" hint="margins, distances, error band">
-            <div className="grid grid-cols-2 gap-2">
-              <Stat label="Result" value={verdict.word} tone={verdict.good ? 'good' : 'bad'} sub={verdict.why} />
-              <Stat
-                label="Net height at crossing"
-                value={g.aroundPost ? '—' : `${g.netH.toFixed(2)} ft`}
-                sub={g.aroundPost ? 'Passes outside the post' : `${f1(Math.abs(g.netPt.x - CX))} ft from center strap`}
-              />
-              <Stat
-                label="Margin to sideline"
-                value={`${f1(g.sideMargin)} ft`}
-                tone={g.sideMargin < 0 ? 'bad' : undefined}
-                sub={g.sideMargin < 0 ? 'Wide' : kind === 'serve' ? 'Service box' : mode === 'doubles' ? 'Doubles sideline' : 'Singles sideline'}
-              />
-              <Stat
-                label={kind === 'serve' ? 'Margin to service line' : 'Margin to baseline'}
-                value={`${f1(g.baseMargin)} ft`}
-                tone={g.baseMargin < 0 ? 'bad' : undefined}
-                sub={g.baseMargin < 0 ? 'Long' : 'Depth left before long'}
-              />
-              <Stat label="Shot length" value={`${f1(shot.L)} ft`} sub={`${Math.abs(angleDeg).toFixed(1)}° off straight`} />
-              <Stat
-                label="Distance to the out line"
-                value={g.box.reaches && g.box.tOut > 0 ? `${f1(g.box.tOut)} ft` : '—'}
-                sub="From contact, along the path"
-              />
-              <Stat label="Time in the air" value={`${flight.time.toFixed(2)} s`} sub={`Contact at ${CONTACT_FT[kind]} ft`} />
-              <Stat label="Speed at the bounce" value={`${flight.landMph.toFixed(0)} mph`} sub="After air drag" />
-            </div>
-            {g.band ? (
-              <div className="rounded-xl bg-zinc-950/60 p-3 space-y-2">
-                <div className="flex items-baseline justify-between">
-                  <p className="text-xs font-bold text-zinc-400">±{err}° direction error</p>
-                  <p className={`text-base font-black ${g.band.pctIn < 75 ? 'text-red-400' : g.band.pctIn < 95 ? 'text-zinc-100' : 'text-green-400'}`}>
-                    {g.band.pctIn.toFixed(0)}% in
-                  </p>
+          {!simple && (
+            <>
+              {/* ── Settings ── */}
+              <Collapsible title="Settings" hint="error, positions, compare">
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-xs font-bold text-zinc-300">Direction error</p>
+                    <p className="text-[11px] text-zinc-500">how far off your aim the ball can leave</p>
+                  </div>
+                  <Segmented
+                    value={String(err)}
+                    onChange={v => setErr(Number(v))}
+                    options={ERR_LEVELS.map(e => ({ v: String(e), label: e ? `±${e}°` : 'Off' }))}
+                  />
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <Mini label="Side to side" value={`±${f1(g.band.lateral)} ft`} />
-                  <Mini label="Out wide / long" value={`${g.band.pctWide.toFixed(0)}% / ${g.band.pctLong.toFixed(0)}%`} />
-                  <Mini label="Net height" value={`${g.band.netLo.toFixed(2)}–${g.band.netHi.toFixed(2)}`} />
+                <div className="flex flex-wrap gap-2">
+                  <Toggle on={showSpots} onClick={() => setShowSpots(v => !v)} label="Where to be" />
+                  {kind === 'rally' && <Toggle on={showCompare} onClick={() => setShowCompare(v => !v)} label="Compare CC / DTL" />}
+                  <button onClick={resetAll} className="rounded-full border border-zinc-800 px-3 py-1.5 text-xs font-bold text-zinc-400 active:scale-95">
+                    Reset
+                  </button>
                 </div>
-                <p className="text-[11px] text-zinc-500">Same length, direction anywhere within ±{err}° of your aim. Green arc = lands in, red = out.</p>
-              </div>
-            ) : (
-              <p className="text-[11px] text-zinc-500">Turn on a direction error in Settings to see how often this shot stays in.</p>
-            )}
-          </Collapsible>
+                <p className="text-[11px] text-zinc-500">
+                  Drag the ball, the landing spot, or any player. The landing spot snaps to the standard targets.
+                  {!profile && ' Tip: in Match Log, open Stats → UErrors → “Practice these misses” to load your own miss pattern.'}
+                </p>
+              </Collapsible>
+
+              {showSpots && g.landIn && <RepliesCard replies={pl.replies} doubles={mode === 'doubles'} />}
+
+              {cmp && <CompareCard cmp={cmp} deg={cmpDeg} mode={mode} defaulted={!err} />}
+
+              {profile && (
+                <ProfileCard
+                  profile={profile}
+                  onApply={deg => setErr(deg)}
+                  onClear={() => {
+                    setProfile(null);
+                    store.set(PROFILE_KEY, null);
+                  }}
+                />
+              )}
+
+              {/* ── Details ── */}
+              <Collapsible title="Details" hint="margins, distances, error band">
+                <div className="grid grid-cols-2 gap-2">
+                  <Stat label="Result" value={verdict.word} tone={verdict.good ? 'good' : 'bad'} sub={verdict.why} />
+                  <Stat
+                    label="Net height at crossing"
+                    value={g.aroundPost ? '—' : `${g.netH.toFixed(2)} ft`}
+                    sub={g.aroundPost ? 'Passes outside the post' : `${f1(Math.abs(g.netPt.x - CX))} ft from center strap`}
+                  />
+                  <Stat
+                    label="Margin to sideline"
+                    value={`${f1(g.sideMargin)} ft`}
+                    tone={g.sideMargin < 0 ? 'bad' : undefined}
+                    sub={g.sideMargin < 0 ? 'Wide' : kind === 'serve' ? 'Service box' : mode === 'doubles' ? 'Doubles sideline' : 'Singles sideline'}
+                  />
+                  <Stat
+                    label={kind === 'serve' ? 'Margin to service line' : 'Margin to baseline'}
+                    value={`${f1(g.baseMargin)} ft`}
+                    tone={g.baseMargin < 0 ? 'bad' : undefined}
+                    sub={g.baseMargin < 0 ? 'Long' : 'Depth left before long'}
+                  />
+                  <Stat label="Shot length" value={`${f1(shot.L)} ft`} sub={`${Math.abs(angleDeg).toFixed(1)}° off straight`} />
+                  <Stat
+                    label="Distance to the out line"
+                    value={g.box.reaches && g.box.tOut > 0 ? `${f1(g.box.tOut)} ft` : '—'}
+                    sub="From contact, along the path"
+                  />
+                </div>
+                {g.band ? (
+                  <div className="rounded-xl bg-zinc-950/60 p-3 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <p className="text-xs font-bold text-zinc-400">±{err}° direction error</p>
+                      <p className={`text-base font-black ${g.band.pctIn < 75 ? 'text-red-400' : g.band.pctIn < 95 ? 'text-zinc-100' : 'text-green-400'}`}>
+                        {g.band.pctIn.toFixed(0)}% in
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <Mini label="Side to side" value={`±${f1(g.band.lateral)} ft`} />
+                      <Mini label="Out wide / long" value={`${g.band.pctWide.toFixed(0)}% / ${g.band.pctLong.toFixed(0)}%`} />
+                      <Mini label="Net height" value={`${g.band.netLo.toFixed(2)}–${g.band.netHi.toFixed(2)}`} />
+                    </div>
+                    <p className="text-[11px] text-zinc-500">Same length, direction anywhere within ±{err}° of your aim. Green arc = lands in, red = out.</p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-zinc-500">Turn on a direction error in Settings to see how often this shot stays in.</p>
+                )}
+              </Collapsible>
+            </>
+          )}
         </>
       )}
 
@@ -858,9 +962,9 @@ export default function ShotGeometryPage() {
           {[
             { t: 'Crosscourt = lower net + more court', d: 'Corner-to-corner is ~82.5 ft in singles vs 78 ft down the line, and it crosses near the 3 ft center strap.' },
             { t: 'Down the line = higher net + less court', d: 'It crosses near the posts (up to 3.5 ft) with 4.5 fewer feet of court. Change direction here with purpose.' },
-            { t: 'Errors grow with distance', d: 'A 2° mis-hit is ~2.7 ft sideways over 78 ft — more on longer shots. Aim a few feet inside the lines.' },
-            { t: 'Spin buys net clearance', d: 'At the same speed, topspin lets you launch higher and still land in. Watch the side view as you switch Flat → Heavy.' },
-            { t: 'Recover to the bisector', d: 'After you hit, move to the middle of your opponent’s possible replies — not the middle of the court.' },
+            { t: 'Recover toward their likely reply', d: 'After you hit, don’t go back to the middle — go to where their most likely shot will come.' },
+            { t: 'In doubles, play away from the net player', d: 'Keep the ball out of the net player’s reach: crosscourt, through the middle, or over their head.' },
+            ...(simple ? [] : [{ t: 'Errors grow with distance', d: 'A 2° mis-hit is ~2.7 ft sideways over 78 ft — more on longer shots. Aim a few feet inside the lines.' }]),
           ].map(x => (
             <div key={x.t} className="px-4 py-3">
               <p className="text-sm font-bold text-zinc-100">{x.t}</p>
@@ -869,12 +973,115 @@ export default function ShotGeometryPage() {
           ))}
         </div>
         <p className="text-[11px] text-zinc-500 px-1">
-          Model: from above, the ball travels in a straight line. The side view adds gravity, air drag and topspin lift, with
-          contact at {CONTACT_FT[kind]} ft. Net sag is treated as linear from 3.5 ft at the posts
-          {mode === 'singles' ? ' (singles sticks)' : ''} to 3 ft at the center. Inside-out/in assume a right-hander.
+          {simple
+            ? 'Assumes right-handed players and typical choices; real points vary.'
+            : `Model: from above, the ball travels in a straight line. Net sag is treated as linear from 3.5 ft at the posts${
+                mode === 'singles' ? ' (singles sticks)' : ''
+              } to 3 ft at the center. Reply odds are rough rules of thumb: crosscourt by default, fewer lines when pulled wide, fewer angles from deep, and a net player can reach about ${NET_REACH} ft to either side without poaching. Inside-out/in assume a right-hander.`}
         </p>
       </section>
     </div>
+  );
+}
+
+// ─── The point, in plain words ────────────────────────────────────────────────
+
+function Step({ n, title, color, children }: { n: number; title: string; color: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3 px-4 py-3">
+      <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-zinc-900 ${color}`}>{n}</span>
+      <div className="space-y-0.5">
+        <p className="text-sm font-bold text-zinc-100">{title}</p>
+        <div className="text-sm text-zinc-400 leading-snug">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function PlayCard({
+  verdictGood, verdictWhy, shotText, receiver, moveText, best, blocked, hitter, recoverText,
+  hitterPartner, partnerText, poachText, poachLabel, receiverPartner, receiverPartnerText, serve, onMoveEveryone,
+}: {
+  verdictGood: boolean;
+  verdictWhy: string;
+  shotText: string;
+  receiver: PlayerId;
+  moveText: string;
+  best: Reply;
+  blocked: Reply[];
+  hitter: PlayerId;
+  recoverText: string;
+  hitterPartner: PlayerId | null;
+  partnerText: string | null;
+  poachText: string | null;
+  poachLabel: string;
+  receiverPartner: PlayerId | null;
+  receiverPartnerText: string | null;
+  serve: boolean;
+  onMoveEveryone: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 divide-y divide-zinc-800 overflow-hidden">
+      <Step n={1} title="Where the shot goes" color={verdictGood ? 'bg-green-400' : 'bg-red-400'}>
+        {cap(shotText)}. {verdictGood ? `It lands in, ${verdictWhy}.` : `It’s out: ${verdictWhy}.`}
+      </Step>
+      {verdictGood && (
+        <>
+          <Step n={2} title={`${receiver}: move to hit it`} color="bg-zinc-100">
+            {cap(go('Move', moveText))} {serve ? '— return from just behind the baseline' : 'to meet the ball a few feet past the bounce'}.
+            {receiverPartner && receiverPartnerText && (
+              <> {receiverPartner}: {go('move', receiverPartnerText)} {serve ? 'on the service line' : 'to cover the middle at the net'}.</>
+            )}
+          </Step>
+          <Step n={3} title={`Best shot back: ${best.label.toLowerCase()}`} color="bg-amber-400">
+            {cap(REPLY_WHY[best.key])}.
+            {blocked.length > 0 && hitterPartner && (
+              <> Avoid {hitterPartner} at the net — they can reach {blocked.map(b => REPLY_NOUN[b.key]).join(' and ')}.</>
+            )}
+          </Step>
+          <Step n={4} title={`${hitter}${hitterPartner ? ` & ${hitterPartner}` : ''}: get ready for it`} color="bg-sky-400">
+            {hitter}: {go('recover', recoverText)}, ready for the {best.label.toLowerCase()}.
+            {hitterPartner && partnerText && (
+              <>
+                {' '}{hitterPartner}: {go('move', partnerText)} to guard the line
+                {poachText && poachLabel && <> — or poach: go {poachText} to cut off the {poachLabel}</>}.
+              </>
+            )}
+          </Step>
+          <div className="px-4 py-3">
+            <button onClick={onMoveEveryone} className="w-full rounded-xl border border-zinc-700 px-3 py-2 text-xs font-bold text-zinc-200 active:scale-[0.98]">
+              Move everyone into place
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ─── Likely replies (advanced) ────────────────────────────────────────────────
+
+function RepliesCard({ replies, doubles }: { replies: Reply[]; doubles: boolean }) {
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-2">
+      <div className="flex items-baseline justify-between">
+        <p className="text-sm font-black text-zinc-100">Likely replies</p>
+        <p className="text-[11px] text-zinc-500">rough odds from the receiver’s spot</p>
+      </div>
+      {replies.map(r => (
+        <div key={r.key} className="flex items-center gap-2">
+          <span className="w-28 text-xs text-zinc-300">{r.label}</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+            <div className="h-full rounded-full bg-amber-400" style={{ width: `${r.p * 100}%` }} />
+          </div>
+          <span className="w-9 text-right text-xs font-bold tabular-nums text-zinc-200">{Math.round(r.p * 100)}%</span>
+        </div>
+      ))}
+      {doubles && replies.some(r => r.blocked) && (
+        <p className="text-[11px] text-zinc-500">✕ on court = within the net player’s reach, so much less likely.</p>
+      )}
+      <p className="text-[11px] text-zinc-500">The hitter’s recovery spot is weighted by these odds.</p>
+    </section>
   );
 }
 
@@ -983,7 +1190,7 @@ function QuizPanel({
 
 function ProfileCard({
   profile, onApply, onClear,
-}: { profile: Profile; onApply: (deg: number, clearanceGoal: number | null) => void; onClear: () => void }) {
+}: { profile: Profile; onApply: (deg: number) => void; onClear: () => void }) {
   const total = profile.wide + profile.long + profile.net;
   const share = (n: number) => (total ? n / total : 0);
   const rows = [
@@ -994,13 +1201,12 @@ function ProfileCard({
   const top = [...rows].sort((a, b) => b.v - a.v)[0];
   const wideShare = share(profile.wide);
   const deg = wideShare >= 0.45 ? 3 : wideShare >= 0.25 ? 2 : 1;
-  const goal = share(profile.net) >= 0.25 ? 3 : null;
   const tip =
     top.k === 'Wide'
       ? `Most misses go wide: aim ${INSET + 1}–${INSET + 2} ft inside the sidelines and lean on crosscourt, which has the most room.`
       : top.k === 'Long'
         ? 'Most misses go long: aim 5–6 ft inside the baseline, or add topspin so the ball dips in.'
-        : 'Most misses hit the net: aim for 3+ ft of net clearance and let topspin bring it down.';
+        : 'Most misses hit the net: aim higher over the net and hit through the middle, where the net is lowest (3 ft).';
 
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
@@ -1025,14 +1231,14 @@ function ProfileCard({
           </div>
           <p className="text-xs text-zinc-300">{tip}</p>
           <p className="text-[11px] text-zinc-500">
-            Suggested starting point: ±{deg}° direction error{goal !== null ? `, ${goal} ft net-clearance target` : ''}. It’s a rough guide from
+            Suggested starting point: ±{deg}° direction error. It’s a rough guide from
             where your misses go, not a measurement of your swing.
           </p>
         </>
       )}
       <div className="flex gap-2">
         {total >= 5 && (
-          <button onClick={() => onApply(deg, goal)} className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-900 active:scale-95">
+          <button onClick={() => onApply(deg)} className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-900 active:scale-95">
             Use my numbers
           </button>
         )}
