@@ -221,6 +221,14 @@ export function StatsClient({ matches }: { matches: MatchRow[] }) {
               if (v === 0) return null
               return <StatRow key={dir} label={dir[0].toUpperCase() + dir.slice(1)} value={v} bar max={s.ue1} />
             })}
+            {(s.ueDirs1.wide ?? 0) + (s.ueDirs1.long ?? 0) + (s.ueDirs1.net ?? 0) > 0 && (
+              <Link
+                href={`/playbook/geometry?w=${s.ueDirs1.wide ?? 0}&lg=${s.ueDirs1.long ?? 0}&n=${s.ueDirs1.net ?? 0}`}
+                className="block pt-2 text-xs font-bold text-sky-400 hover:text-sky-300"
+              >
+                Practice these misses in Shot Geometry →
+              </Link>
+            )}
           </CardContent>
         </Card>
       )}
