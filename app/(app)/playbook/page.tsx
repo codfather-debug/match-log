@@ -27,6 +27,14 @@ const BOOKS = [
     badge: 'text-amber-400',
   },
   {
+    href: '/playbook/troubleshoot',
+    icon: '🧭',
+    title: 'In-Match Troubleshooting',
+    sub: "What's not working → what to try",
+    accent: 'border-orange-400/20 hover:border-orange-400/40',
+    badge: 'text-orange-300',
+  },
+  {
     href: '/playbook/return',
     icon: '↩️',
     title: 'Return Game',
