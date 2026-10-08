@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -209,6 +210,15 @@ export default function MentalPlaybookPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'Between every point: React → Release → Reset → Ready.',
+          'Only the next point matters — not the last one, not the score.',
+          'On big points, hit your safest, best shot.',
+        ]}
+      />
+
 
       <div className="space-y-7">
 
