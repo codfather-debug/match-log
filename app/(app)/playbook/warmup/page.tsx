@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 const PHASES = [
   {
@@ -12,7 +13,7 @@ const PHASES = [
     color: 'border-lime-400/30 bg-lime-400/[0.06]',
     accent: 'text-lime-400',
     tips: [
-      'Stand at the service box, hit soft volleys and drops',
+      'Stand at the service line and rally softly inside the service boxes',
       'Focus on touch and feel — easy, loose swings',
       'Get eyes tracking the ball, hands warming up',
     ],
@@ -103,6 +104,15 @@ export default function WarmupPlaybookPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'Do the dynamic warm-up before you hit — get your body moving first.',
+          'Start soft and build up. By the end, hit at match pace.',
+          'Before the first point, know your serve target and your return target.',
+        ]}
+      />
+
 
       <div className="space-y-6">
         {/* Hero */}
