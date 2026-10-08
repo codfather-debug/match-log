@@ -2,18 +2,19 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 const RETURN_PATTERNS = [
   {
     title: 'Down the Middle',
     desc: 'Safe, high-percentage return. Neutralizes serve angles, limits opponent\'s attack options. Best on 1st serve.',
-    cue: 'Aim 3 feet over net, bisect the court',
+    cue: 'Aim 3+ feet over the net, deep down the middle',
     use: 'When under pressure or returning big serves',
   },
   {
     title: 'Cross-Court Angle',
     desc: 'Opens the court and pulls opponent wide. Use on 2nd serve when you have time to set up.',
-    cue: 'Step in, hit early, aim inside-out',
+    cue: 'Step in, swing smooth, aim deep cross-court',
     use: '2nd serve → attack wide',
   },
   {
@@ -24,14 +25,14 @@ const RETURN_PATTERNS = [
   },
   {
     title: 'Chip & Charge',
-    desc: 'Block the return low at opponent\'s feet, immediately follow to net. Disrupts rhythm on slow serves.',
+    desc: 'Slice the return low and follow it to the net. Disrupts rhythm on slow serves. 3.5+ only.',
     cue: 'Slice low → sprint → volley',
-    use: 'On weak 2nd serves, slow clay',
+    use: 'On weak, short 2nd serves',
   },
 ];
 
 const READING_CUES = [
-  { icon: '👀', label: 'Toss position',   tip: 'Toss over right shoulder = wide to deuce side / down-T to ad side' },
+  { icon: '👀', label: 'Where they served last',   tip: 'Most players serve to the same spot under pressure. Notice their favorite and lean that way.' },
   { icon: '🦶', label: 'Foot position',   tip: 'Server stepping in → net rusher coming. Prepare a low return.' },
   { icon: '🎾', label: 'Ball toss height',tip: 'Low toss = kick or slice. High toss = flat bomb. Adjust stance early.' },
   { icon: '↕️', label: 'Shoulder turn',   tip: 'Early shoulder rotation = fast flat serve. Late = spin or placement.' },
@@ -40,7 +41,7 @@ const READING_CUES = [
 const POSITIONS = [
   {
     label: 'Flat / Big Serve',
-    desc: 'Stand 1–2 feet behind baseline. Give yourself reaction time. Compact backswing, redirect pace.',
+    desc: 'Stand 2–4 feet behind the baseline. Give yourself reaction time. Short backswing — block it back deep.',
     emoji: '💨',
   },
   {
@@ -50,7 +51,7 @@ const POSITIONS = [
   },
   {
     label: 'Slow / Weak 2nd',
-    desc: 'Step well inside baseline. Take it early, hit on the rise. Dictate with pace or angle immediately.',
+    desc: 'Step in to the baseline or just inside. Hit deep to their weaker side and look to take over the point.',
     emoji: '⚡',
   },
 ];
@@ -98,6 +99,17 @@ export default function ReturnPlaybookPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'Job #1: get the return in play. Deep down the middle is always safe.',
+          'Big serve: stand 2–4 ft behind the baseline and use a short swing.',
+          'Weak 2nd serve: step in and hit deep to their weaker side.',
+        ]}
+        level30='Return down the middle, every time. Aim for 8 out of 10 in play.'
+        level35='Attack weak 2nd serves cross-court or to the backhand.'
+      />
+
 
       <div className="space-y-6">
         {/* Hero */}
