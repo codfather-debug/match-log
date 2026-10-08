@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,6 @@ const SECTIONS = [
       { n: 15, title: 'Calls must be audible or visible', body: 'No matter how obvious it seems, your opponent is entitled to a prompt audible or visible out call.' },
       { n: 16, title: 'Spectators never make calls', body: 'Never enlist a spectator to help with a call. No spectator has a part in a match.' },
       { n: 17, title: 'Make calls promptly', body: 'A call must be made before your return goes out of play or before your opponent has had a chance to play it. Delayed calls that give you a \'second chance\' are not valid.' },
-      { n: 21, title: 'Clay court marks', body: 'On clay, if any part of a ball mark touches a line, the ball is good. Take a careful second look at any close point-ending placement near the lines.' },
     ],
   },
   {
@@ -160,6 +160,15 @@ export default function TennisRulesPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'You call the balls on your side of the net.',
+          'Only call a ball out if you clearly saw space between the ball and the line. If in doubt, it\'s good.',
+          'Call it out loud and right away. Be honest and polite — always.',
+        ]}
+      />
+
 
       <div className="space-y-7">
 
