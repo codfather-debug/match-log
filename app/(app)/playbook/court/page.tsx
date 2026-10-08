@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 export default function CourtReferencePage() {
   return (
@@ -8,6 +9,15 @@ export default function CourtReferencePage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'The net is lowest in the middle (3 ft), so cross-court and middle shots are safest.',
+          'Singles uses the inside sidelines. Doubles adds the alleys.',
+          'Where you stand tells you what to hit: defend when deep, attack when close.',
+        ]}
+      />
+
 
       <div className="space-y-7">
 
