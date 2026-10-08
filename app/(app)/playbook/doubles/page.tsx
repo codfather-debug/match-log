@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -11,7 +12,7 @@ const FUNDAMENTALS = [
     summary: 'The team that controls the net wins. Make it your constant goal to get both players forward.',
     points: [
       'Both players at net win far more points than either baseline formation.',
-      'Every serve + volley or return + approach opportunity is worth taking.',
+      'Move forward together on short balls and weak returns — never one at a time.',
       'Force your opponents back with pace and depth, then move in together.',
       'Net control shifts momentum — defend it aggressively.',
     ],
@@ -51,7 +52,7 @@ const FUNDAMENTALS = [
     summary: 'Find the vulnerability in the opposing team and exploit it relentlessly.',
     points: [
       'Target the weaker volleyer or the player who mis-hits under pressure.',
-      'Hit at the body of the net player — most miss or pop it up.',
+      'Aim at the net player\'s hip or feet (never the head) — most will miss or pop it up.',
       'Identify who\'s struggling mentally and press their side.',
       'Don\'t switch targets mid-plan unless the opponent completely adjusts.',
     ],
@@ -92,7 +93,7 @@ const ROLES = [
     badge: 'text-amber-400',
     points: [
       'Default return: low and cross-court, away from the net player.',
-      'Attack the second serve — step in, take it early, go for a winner.',
+      'On a weak second serve, step in and hit deep cross-court or at the net player\'s feet.',
       'Lob the net player when they\'re poaching or standing too close.',
       'Hit at the net player\'s feet if the opportunity is there.',
       'After a quality return, move in to take the net with your partner.',
@@ -133,7 +134,7 @@ const FORMATIONS = [
     cons: ['Surrenders net control', 'Gives opponents easy volleys', 'Use as a reset, not a strategy'],
   },
   {
-    title: 'Up & Back (I-Formation)',
+    title: 'Up & Back',
     icon: '⬆️⬇️',
     label: 'Standard',
     color: 'text-sky-400',
@@ -167,13 +168,13 @@ const NET_PLAY = [
 ];
 
 const THEMES = [
-  { icon: '🏆', tip: 'The team that wins the net wins the match. Make both-up your mission.' },
+  { icon: '🏆', tip: 'The team that controls the net usually wins. Move up together when you get a short ball.' },
   { icon: '📣', tip: 'Talk on every ball down the middle. Silence = errors.' },
   { icon: '⬇️', tip: 'Keep the ball low — a ball below the net forces opponents to hit up.' },
   { icon: '🎯', tip: 'Target the weaker player consistently. Don\'t switch plans too early.' },
   { icon: '↩️', tip: 'Return cross-court by default. Never give the net player an easy put-away.' },
   { icon: '🔄', tip: 'After a poach, switch sides. Movement must be automatic.' },
-  { icon: '💪', tip: 'Hit at the body of the net player when uncertain. It neutralizes their angle.' },
+  { icon: '💪', tip: 'When unsure, aim at the net player\'s hip or feet. It takes away their angle.' },
   { icon: '🧠', tip: 'Trust each other. One bad shot doesn\'t change the game plan.' },
 ];
 
@@ -298,6 +299,17 @@ export default function DoublesPlaybookPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'Talk on every ball — especially balls down the middle.',
+          'Return cross-court and low, away from the net player.',
+          'Move as a team: up together, back together.',
+        ]}
+        level30='Start up & back. The net player stays active and the baseline player keeps the ball cross-court.'
+        level35='Look to get both players to the net on short balls. Use poach signals.'
+      />
+
 
       <div className="space-y-7">
 
