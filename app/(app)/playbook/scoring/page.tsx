@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -332,6 +333,15 @@ export default function ScoringPlaybookPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'The server\'s score is always said first.',
+          'Ad scoring: from Deuce you must win 2 points in a row. No-Ad: 40–all is one deciding point.',
+          'Tiebreak: first to 7, win by 2. Switch ends every 6 points.',
+        ]}
+      />
+
 
       <div className="space-y-7">
 
