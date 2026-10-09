@@ -2,6 +2,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Share2 } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 import {
   CX, LEN, MAX_ANGLE, NET_Y, PLAYERS, RALLY_PRESETS, SERVE_PRESETS, SIDES, SVC, INSET,
   analyze, along, clamp, compareShots, dirOf, dist, f1, hittingTeam, isDeuce, moveWords, play, presetShot,
@@ -466,6 +467,14 @@ export default function ShotGeometryPage() {
         </div>
       </div>
 
+      <KeyPoints
+        points={[
+          'Cross-court is the longest shot and crosses the lowest part of the net — the safest choice.',
+          'Down the line is shorter and crosses a higher net — riskier.',
+          'Aim a few feet inside the lines, never at them.',
+        ]}
+      />
+
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-zinc-100">Shot Geometry</h1>
@@ -884,7 +893,7 @@ export default function ShotGeometryPage() {
                 </div>
                 <p className="text-[11px] text-zinc-500">
                   Drag the ball, the landing spot, or any player. The landing spot snaps to the standard targets.
-                  {!profile && ' Tip: in Match Log, open Stats → UErrors → “Practice these misses” to load your own miss pattern.'}
+                  {!profile && ' Match Log app users: open Stats → UErrors → “Practice these misses” to load your own miss pattern.'}
                 </p>
               </Collapsible>
 
