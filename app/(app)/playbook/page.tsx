@@ -3,6 +3,14 @@ import Link from 'next/link';
 
 const BOOKS = [
   {
+    href: '/playbook/matchday',
+    icon: '✅',
+    title: 'Match Day',
+    sub: 'Start here · warm-up → plan → between points → changeovers',
+    accent: 'border-lime-400/40 hover:border-lime-400/60',
+    badge: 'text-lime-300',
+  },
+  {
     href: '/playbook/singles',
     icon: '🎾',
     title: 'Singles Playbook',
@@ -81,6 +89,14 @@ const BOOKS = [
     sub: 'Interactive court · angles · net height · error bands',
     accent: 'border-lime-400/20 hover:border-lime-400/40',
     badge: 'text-lime-300',
+  },
+  {
+    href: '/playbook/glossary',
+    icon: '📖',
+    title: 'Glossary',
+    sub: 'Tennis words in plain English',
+    accent: 'border-zinc-800 hover:border-zinc-700',
+    badge: 'text-zinc-300',
   },
 ];
 
