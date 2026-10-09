@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { KeyPoints } from '../KeyPoints';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,7 @@ const TREE: Question = {
                 'Hit low, dipping balls at their feet — make them volley up.',
                 'If they are close to the net, lob over their backhand side.',
                 'Pick one side to pass and commit to it.',
-                'Hit right at them if you\'re rushed — it\'s hard to volley from the body.',
+                'If you\'re rushed, aim at their hip or feet — it\'s hard to volley from there.',
               ],
               strategy: 'Bring the Opponent to the Net (pass or lob)',
               links: [SINGLES],
@@ -194,7 +195,7 @@ const TREE: Question = {
               title: 'Just get the return back',
               why: 'Against a big serve, a deep, safe return is a win.',
               steps: [
-                'Step back 3–4 feet to give yourself more time.',
+                'Stand 2–4 feet behind the baseline to give yourself more time.',
                 'Use a short, compact swing — block it back.',
                 'Aim deep down the middle.',
                 'On their 2nd serve, step in and attack.',
@@ -273,14 +274,14 @@ const TREE: Question = {
       next: {
         kind: 'fix',
         title: 'Shorten the points',
-        why: '70% of points end in 1–4 shots. If you lose long rallies, win the point early.',
+        why: 'If they out-last you in long rallies, look for a chance to finish the point — but only on the right ball.',
         steps: [
-          'Serve wide or into the body, then hit a forehand on the next ball (Serve +1).',
-          'Step in and attack their 2nd serve.',
-          'Move forward on any short ball — don\'t back up.',
-          'Approach the net after a deep, strong shot.',
+          'Keep rallying deep — wait for a short ball. Don\'t force it.',
+          'When it comes, step in, hit to their weaker side, and come forward.',
+          'Step in on their 2nd serve and hit it deep.',
+          'At 3.0: if this isn\'t working yet, go back to Out-Rally and make one more ball.',
         ],
-        strategy: 'Play Aggressively · Serve + 1 Forehand',
+        strategy: 'Attack the short ball · Play Aggressively (3.5+)',
         links: [SINGLES],
       },
     },
@@ -537,6 +538,15 @@ export default function TroubleshootPlaybookPage() {
       <Link href="/playbook" className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-100 mb-2">
         <ArrowLeft className="h-4 w-4" /> Playbook
       </Link>
+
+      <KeyPoints
+        points={[
+          'Tap what\'s going wrong to get a fix.',
+          'Change ONE thing at a time.',
+          'Use the changeover check every time you switch sides.',
+        ]}
+      />
+
 
       <div className="space-y-7">
 
