@@ -91,6 +91,14 @@ const BOOKS = [
     badge: 'text-lime-300',
   },
   {
+    href: '/playbook/friend-at-court',
+    icon: '⚖️',
+    title: 'Friend at Court',
+    sub: 'Official USTA rule book · search every rule',
+    accent: 'border-amber-400/20 hover:border-amber-400/40',
+    badge: 'text-amber-300',
+  },
+  {
     href: '/playbook/glossary',
     icon: '📖',
     title: 'Glossary',
